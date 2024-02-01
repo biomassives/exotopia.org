@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>eCo oPs Checkin Uploader</title>
+  <title>Exotopia Uploader</title>
   <script src="https://cdn.jsdelivr.net/npm/vue@3"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css">
 </head>
@@ -12,7 +12,8 @@
 <body class="bg-gray-100 p-8">
   <div id="app">
     <div class="max-w-md mx-auto bg-white p-8 rounded-md shadow-md">
-      <h1 class="text-3xl font-bold mb-4 text-teal-500 bg-gradient-to-r from-blue-400 via-green-400 to-yellow-500">eCo oPs Checkin Uploader</h1>
+      <h1 class="text-3xl font-bold mb-4 text-teal-500 bg-gradient-to-r from-blue-400 via-green-400 to-yellow-500">exotipia Uploader</h1>
+      <div class="text-md1 font-bold mb-4 text-teal-500 bg-gradient-to-r from-blue-400 via-green-400 to-yellow-500">populate your exotopian paradise gallery</div>
       <form @submit.prevent="uploadFile" class="mb-4">
         <input type="file" @change="handleFileChange" accept="image/*" class="mb-2 p-2 border rounded-md">
         <button type="submit" class="bg-blue-500 text-white p-2 rounded-md hover:bg-blue-600">Upload</button>
@@ -51,6 +52,10 @@
         <a :href="cidResponse.url" target="_blank" class="text-blue-500">View File</a>
       </div>
     </div>
+
+    <BR>
+    This product is in a testing phase, any uploads sent here will likely remain permanently availabe via ipfs networks.<BR>
+    Remember your CID numbers for now please. Thank you for participating.
   </div>
 
   <script>
