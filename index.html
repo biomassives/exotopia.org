@@ -16,6 +16,10 @@
       <div class="text-md1 font-bold mb-4 text-teal-640 bg-gradient-to-r from-yellow-400 via-green-400 to-red-500"> populate your exotopian paradise gallery </div>
       <form @submit.prevent="uploadFile" class="mb-4">
         <input type="file" @change="handleFileChange" accept="image/*" class="mb-2 p-2 border rounded-md">
+        <!-- Image Upload Field -->
+        <label for="projectImage" class="block mb-2">Project Image</label>
+        <input type="file" id="projectImage" name="projectImage" class="w-full mb-4 p-2 border rounded">
+
         <button type="submit" class="bg-blue-500 text-white p-2 rounded-md hover:bg-blue-600">Upload</button>
       </form>
 
@@ -134,6 +138,72 @@
     });
 
     app.mount('#app');
+
+
+document.getElementById('supabaseForm').addEventListener('submit', async function(e) {
+    e.preventDefault(); // Prevent the default form submission
+
+    // Retrieve form data
+    const name = document.getElementById('name').value;
+    const coordinates = document.getElementById('coordinates').value;
+    const labelText = document.getElementById('labelText').value;
+    const projectImage = document.getElementById('projectImage').files[0];
+
+    // Prepare JSON Data for the NFT metadata
+    const nftMetadata = {
+        name: `Reward for ${name}`,
+        description: "Recognition for contributions to the Eco Ops project.",
+        image: "", // This will be updated after image upload
+        properties: {
+            project: "Eco Ops Initiative",
+            coordinates: coordinates,
+            label: labelText,
+            // The associated data URL will be updated after uploading the second JSON file
+            associatedData: ""
+        }
+    };
+
+    // Simulate Image Upload and Update Metadata with Image URL
+    const imageUrl = await uploadImageToStorage(projectImage); // Implement this function to upload the image
+    nftMetadata.image = imageUrl;
+
+    // Prepare the associated JSON data
+    const associatedData = {
+        projectId: "UniqueProjectID",
+        activities: ["Activity 1", "Activity 2"],
+        achievements: ["Achievement 1", "Achievement 2"]
+    };
+
+    // Simulate Associated Data Upload and Update Metadata with the Associated Data URL
+    const associatedDataUrl = await uploadJsonToStorage(associatedData); // Implement this function to upload JSON data
+    nftMetadata.properties.associatedData = associatedDataUrl;
+
+    // Simulate NFT Metadata Upload
+    const metadataUrl = await uploadJsonToStorage(nftMetadata); // Implement this function to upload JSON data
+
+    // Display or use the metadata URL (e.g., for NFT minting)
+    console.log(`Metadata URL: ${metadataUrl}`);
+
+    // You can now use `metadataUrl` for minting the NFT or other purposes
+});
+
+// Placeholder function for image upload - replace with your actual upload logic
+async function uploadImageToStorage(imageFile) {
+    // Upload the image to your storage (e.g., IPFS, NFT.storage) and return the URL
+    // This is a placeholder logic; you should implement the actual upload here
+    return "https://example.com/uploaded_image_url.jpg";
+}
+
+// Placeholder function for JSON data upload - replace with your actual upload logic
+async function uploadJsonToStorage(jsonData) {
+    // Upload the JSON data to your storage (e.g., IPFS, NFT.storage) and return the URL
+    // This is a placeholder logic; you should implement the actual upload here
+    return "https://example.com/uploaded_json_url.json";
+}
+
+
+
+    
   </script>
 </body>
 
