@@ -16,13 +16,13 @@
       <div class="text-md1 font-bold mb-4 text-teal-640 bg-gradient-to-r from-yellow-400 via-green-400 to-red-500"> populate your exotopian paradise gallery </div>
       <form @submit.prevent="uploadFile" class="mb-4">
 
-        PAired image 
-        <input type="file" @change="handleFileChange" accept="image/*" class="mb-2 p-2 border rounded-md">
-        <!-- Image Upload Field -->
         
         <label for="projectImage" class="block mb-2">α Project Image</label>
-        <input type="file" id="projectImage" name="projectImage" class="w-full mb-4 p-2 border rounded">
+        <input type="file" @change="handleFileChange" accept="image/*" class="mb-2 p-2 border rounded-md">
+        
+        <!-- Image Upload Field -->
         <label for="projectImage" class="block mb-2">β Project Image</label>
+        <input type="file" id="projectImage" name="projectImage" class="w-full mb-4 p-2 border rounded">
 
         <button type="submit" class="bg-blue-500 text-white p-2 rounded-md hover:bg-blue-600">Upload</button>
       </form>
