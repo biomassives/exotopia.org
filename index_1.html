@@ -11,6 +11,11 @@
 
 <body class="bg-gray-100 p-8">
   <div id="app">
+
+  <div :class="domainClass">
+    <p>{{ message }}</p>
+  </div>
+    
     <div class="max-w-md mx-auto bg-white p-8 rounded-md shadow-md">
       <div class="text-md1 font-bold mb-4 text-teal-640 bg-gradient-to-r from-yellow-400 via-green-400 to-red-500"> help populate exotopian paradise </div>
       <form @submit.prevent="uploadFile" class="mb-4">
@@ -142,6 +147,25 @@
 
     app.mount('#app');
 
+
+    
+    import { ref, computed } from 'vue';
+    
+    const hostname = window.location.hostname;
+    const domainClass = ref('');
+    
+    const message = computed(() => {
+      if (hostname.includes('localhost')) {
+        domainClass.value = 'bg-green-100 text-green-800'; // Tailwind classes for localhost
+        return 'This is the localhost environment.';
+      } else {
+        domainClass.value = 'bg-blue-100 text-blue-800'; // Tailwind classes for production
+        return 'This is the production environment.';
+      }
+    });
+        
+
+    
 
 document.getElementById('supabaseForm').addEventListener('submit', async function(e) {
     e.preventDefault(); // Prevent the default form submission
