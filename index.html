@@ -21,7 +21,7 @@ createApp({
   methods: {
     async fetchData() {
       try {
-        const response = await axios.get('https://ecocity.com/ot6.json');
+        const response = await axios.get('https://worldbridger.one/ot6.json');
         this.ecoGoalsData = response.data;
         this.createChart();
       } catch (error) {
