@@ -8,7 +8,10 @@
 </head>
 <body>
     <div id="three-js-container" style="width: 100vw; height: 100vh;"></div>
+ 
 
+
+    
     <script type="module">
         import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.module.js';
 
@@ -35,8 +38,13 @@
         createSphere(1.25, 'darkblue', 0); // Innermost sphere
 
         // Camera position
-        camera.position.z = 15;
+        camera.position.z = 0;
 
+
+
+
+
+        
         // Animation loop
         function animate() {
             requestAnimationFrame(animate);
