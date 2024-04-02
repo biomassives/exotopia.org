@@ -1,0 +1,1 @@
+https://api.artic.edu/api/v1/artworks/search?query[bool][must][][term][classification_titles.keyword]=painting&query[bool][must][][term][is_public_domain]=true&fields=image_id,title,artist_title&from=0&size=20
