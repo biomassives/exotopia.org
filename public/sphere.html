@@ -51,9 +51,10 @@
         sphere.rotation.x += 0.001;
 
         // Adjust rotation based on mouse movement
-        sphere.rotation.y += mouseMove.x;
-        sphere.rotation.x -= mouseMove.y;
-
+                // Apply a gradual rotation based on mouseMove; adjust the multiplier for sensitivity
+        sphere.rotation.y += mouseMove.x * 0.05;
+        sphere.rotation.x += mouseMove.y * 0.05;
+        
         renderer.render(scene, camera);
     }
 
