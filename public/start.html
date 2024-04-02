@@ -21,7 +21,7 @@
 
         // Sphere with custom skin
         const geometry = new THREE.SphereGeometry(5, 32, 32);
-        const texture = new THREE.TextureLoader().load('https://exotopia.org/public/sky_contellations.gif');
+        const texture = new THREE.TextureLoader().load('sky_contellations.gif');
         const material = new THREE.MeshBasicMaterial({ map: texture });
         sphere = new THREE.Mesh(geometry, material);
         scene.add(sphere);
