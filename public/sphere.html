@@ -13,6 +13,7 @@
     let scene, camera, renderer, sphere;
 
     function init() {
+        document.addEventListener('mousemove', onDocumentMouseMove, false);
         scene = new THREE.Scene();
         camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         renderer = new THREE.WebGLRenderer();
@@ -34,10 +35,22 @@
         animate();
     }
 
+    function onDocumentMouseMove(event) {
+        mouseMove.x = (event.clientX - window.innerWidth / 2) * 0.005;
+        mouseMove.y = (event.clientY - window.innerHeight / 2) * 0.005;
+    }
+
     function animate() {
         requestAnimationFrame(animate);
-        // Optionally, you can make the sphere rotate to give a dynamic view
-        // sphere.rotation.y += 0.005;
+
+        // Automatic slow rotation
+        sphere.rotation.y += 0.001;
+        sphere.rotation.x += 0.001;
+
+        // Adjust rotation based on mouse movement
+        sphere.rotation.y += mouseMove.x;
+        sphere.rotation.x -= mouseMove.y;
+
         renderer.render(scene, camera);
     }
 
