@@ -12,6 +12,9 @@
 <script>
     let scene, camera, renderer, sphere;
 
+
+    let mouseMove = { x: 0, y: 0 };
+    
     function init() {
         document.addEventListener('mousemove', onDocumentMouseMove, false);
         scene = new THREE.Scene();
