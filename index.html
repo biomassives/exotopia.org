@@ -1,128 +1,166 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Exotopia Navigation</title>
-    <script src="https://cdn.jsdelivr.net/npm/vue@latest"></script>
-    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <!-- Tailwind CSS for styling (optional) -->
-    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@^2.0/dist/tailwind.min.css" rel="stylesheet">
+    <title>Interactive Exoplanet Visualization</title>
     <style>
-        body {
-            padding: 20px;
-            font-family: Arial, sans-serif;
-        }
-        #app {
-            max-width: 600px;
-            margin: auto;
-            text-align: center;
-        }
-        canvas {
-            margin-top: 20px;
-        }
+        body { margin: 0; }
+        canvas { display: block; }
+        #info { position: absolute; top: 10px; left: 10px; color: white; }
     </style>
 </head>
 <body>
+    <div id="container"></div>
+    <div id="info">Hover over a region</div>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.125.2/build/three.min.js"></script>
+    <script>
+        let scene, camera, renderer, raycaster, mouse;
+        let INTERSECTED;
+        const regions = [];
+        const radius = 50; // Sphere radius
+        let isDragging = false;
+        let previousMousePosition = { x: 0, y: 0 };
 
-<div id="app">
-    <header class="mb-4">
-        <h2 class="text-3xl font-bold">Worldbridger One</h2>
-    </header>
-    <!-- Ensure the image source is correct -->
-    <img src="worldbridgerone000.gif" alt="Worldbridger One Image">
+        init();
+        animate();
 
-    <canvas id="ecoGoalsChart"></canvas>
-</div>
+        function init() {
+            const container = document.getElementById('container');
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 0, 10); // Adjusted to be slightly outside the sphere
 
-<script>
-const { createApp } = Vue;
+            renderer = new THREE.WebGLRenderer({antialias: true});
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            container.appendChild(renderer.domElement);
 
-createApp({
-    data() {
-        return {
-            ecoGoalsData: [],
-        };
-    },
-    mounted() {
-        this.fetchData();
-    },
-    methods: {
-        async fetchData() {
-            try {
-                const response = await axios.get('ot6.json');
-                this.ecoGoalsData = response.data;
-                this.createChart();
-            } catch (error) {
-                console.error('Fetching data failed:', error);
-            }
-        },
-        processData() {
-            const themes = this.ecoGoalsData.reduce((acc, {theme}) => {
-                acc[theme] = (acc[theme] || 0) + 1;
-                return acc;
-            }, {});
-            return {
-                labels: Object.keys(themes),
-                datasets: [{
-                    data: Object.values(themes),
-                    backgroundColor: [
-                    '#43a047', // A lush green, representing vitality and sustainability
-                    '#1e88e5', // Bright blue, reminiscent of clear skies
-                    '#ffb300', // Vibrant yellow, suggesting sunlight and energy
-                    '#d81b60', // Deep pink, for innovation and creativity
-                    '#8e24aa', // Purple, indicating wisdom and dignity
-                    '#fb8c00', // Orange, for warmth and enthusiasm
-                    '#004d40', // Teal, reflecting depth and stability
-                    '#6d4c41', // Brown, symbolizing the earth and groundedness
-                    '#546e7a', // Cool grey, for balance and modernity
-                    '#78909c', // Lighter blue-grey, for calmness and open space
-                    // You can repeat or add more colors as needed based on the number of themes
-                ]
-                ,
-                }]
-            };
-        },
-        createChart() {
-            const chartData = this.processData();
-            const ctx = document.getElementById('ecoGoalsChart').getContext('2d');
-            new Chart(ctx, {
-                type: 'pie',
-                data: chartData,
-                options: {
-                    responsive: true,
-                    plugins: {
-                        tooltip: {
-                            callbacks: {
-                                label: function(context) {
-                              
-                                    const details = [
-                                    "Vitality and Sustainability: Promoting green energy solutions.",
-                                    "Clear Skies Initiative: Reducing air pollution through innovative policies.",
-                                    "Solar Energy: Harnessing the power of the sun for cleaner fuel alternatives.",
-                                    "Innovation in Recycling: Creative ways to reuse and reduce waste.",
-                                    "Biodiversity: Protecting wildlife and natural habitats.",
-                                    "Community Engagement: Encouraging local initiatives for environmental awareness.",
-                                    "Ocean Conservation: Actions to preserve our oceans and marine life.",
-                                    "Sustainable Agriculture: Promoting eco-friendly farming practices.",
-                                    "Urban Green Spaces: Developing more parks and green areas in cities.",
-                                    "Climate Action: Working together to combat climate change effects."
-                                     ];
+            const geometry = new THREE.SphereGeometry(radius, 32, 32);
+            const material = new THREE.MeshBasicMaterial({ color: 0x000000, side: THREE.BackSide, wireframe: true, transparent: true, opacity: 0.1 });
+            const sphere = new THREE.Mesh(geometry, material);
+            scene.add(sphere);
 
-                                    const label = context.label;
-                                    const detail = details[context.dataIndex];
-                                    return `${label}: ${context.parsed} goals. ${detail}`;
-                                }
-                            }
-                        }
-                    }
-                }
-            });
+            createRegions(100); // Create 100 blobs
+
+            raycaster = new THREE.Raycaster();
+            mouse = new THREE.Vector2();
+
+            document.addEventListener('mousedown', onMouseDown, false);
+            document.addEventListener('mousemove', onMouseMove, false);
+            document.addEventListener('mouseup', onMouseUp, false);
+            window.addEventListener('resize', onWindowResize, false);
         }
-    }
-}).mount('#app');
-</script>
 
+        // Unchanged functions: createRegions, 
+
+        function createRegions(count) {
+            for (let i = 0; i < count; i++) {
+                const regionGeometry = new THREE.SphereGeometry(Math.random() * 0.5 + 0.1, 32, 32); // Varying sizes
+                const regionMaterial = new THREE.MeshBasicMaterial({ color: Math.random() * 0xffffff, side: THREE.DoubleSide, transparent: true, opacity: 0.8 });
+                const regionMesh = new THREE.Mesh(regionGeometry, regionMaterial);
+                const phi = Math.acos(2 * Math.random() - 1);
+                const theta = Math.sqrt(Math.random()) * 2 * Math.PI;
+                regionMesh.position.setFromSphericalCoords(radius - 1, phi, theta); // Randomly position on the inner surface
+                scene.add(regionMesh);
+                regions.push(regionMesh);
+            }
+        }
+
+
+
+        // onMouseDown, 
+        
+        function onMouseDown(event) {
+            isDragging = true;
+        }
+
+
+
+        //onMouseUp, 
+        function onMouseUp() {
+            isDragging = false;
+        }
+        
+        //onWindowResize
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+
+
+
+        function onMouseMove(event) {
+            event.preventDefault();
+
+            // Parallax effect adjustments
+            if (isDragging) {
+                const deltaMove = { x: event.clientX - previousMousePosition.x, y: event.clientY - previousMousePosition.y };
+                const rotateAngleX = deltaMove.y * 0.01;
+                const rotateAngleY = deltaMove.x * 0.01;
+
+                // Update camera position for parallax effect
+                camera.position.x += rotateAngleY;
+                camera.position.y -= rotateAngleX;
+                camera.lookAt(scene.position); // Ensure the camera always looks at the center of the scene
+            }
+
+            previousMousePosition = { x: event.clientX, y: event.clientY };
+
+            // Update intersection logic
+            // Unchanged: Handling raycaster intersections
+
+// Calculate the mouse position in normalized device coordinates (-1 to +1) for both components
+mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+// Update the picking ray with the camera and mouse position
+raycaster.setFromCamera(mouse, camera);
+
+// Calculate objects intersecting the picking ray
+const intersects = raycaster.intersectObjects(regions);
+
+if (intersects.length > 0) {
+    // If the mouse is over an object, highlight the first intersected object
+    if (INTERSECTED != intersects[0].object) {
+        // Restore previous intersection object's material opacity
+        if (INTERSECTED) INTERSECTED.material.opacity = 0.5;
+        
+        // Update INTERSECTED to the currently pointed object
+        INTERSECTED = intersects[0].object;
+        
+        // Increase opacity to highlight the intersected object
+        INTERSECTED.material.opacity = 1;
+        
+        // Optionally, display some information about the object
+        document.getElementById('info').textContent = 'Region: ' + INTERSECTED.userData.name; // Assuming .userData.name holds identifying information
+    }
+} else {
+    // If there are no intersections, restore the last intersected object's material and clear the current INTERSECTED
+    if (INTERSECTED) INTERSECTED.material.opacity = 0.5;
+    INTERSECTED = null;
+    
+    // Reset the info text
+    document.getElementById('info').textContent = 'Hover over a region';
+}
+
+
+
+
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            renderer.render(scene, camera);
+        }
+
+        // Ensure the camera position and rotation are reset appropriately when the user starts dragging
+        function onMouseDown(event) {
+            isDragging = true;
+            previousMousePosition.x = event.clientX;
+            previousMousePosition.y = event.clientY;
+        }
+
+        // Other existing functions remain unchanged
+    </script>
 </body>
 </html>
