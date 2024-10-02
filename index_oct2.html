@@ -3,8 +3,20 @@
     <head>
     <title>Exotopia Interactive Exoplanet Visualization</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ 
     <style>
-        /* Your CSS styles remain unchanged */
+        body { margin: 0; overflow: hidden; }
+        canvas { display: block; background-color: black; }
+        #info { position: absolute; top: 10px; left: 10px; color: white; }
+        #infobox {
+            position: absolute;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.5);
+            border-radius: 5px;
+            color: white;
+            display: none;
+        }
+    
     </style>
     <!-- Load external scripts with defer -->
     <script src="https://cdn.jsdelivr.net/npm/three@0.125.2/build/three.min.js" defer></script>
