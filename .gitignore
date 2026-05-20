@@ -2,3 +2,21 @@ node_modules
 dist
 __pycache__
 datagathering/env
+# Dependencies
+node_modules/
+/.elixir_ls/
+/_build/
+/deps/
+
+# Production/Build outputs
+dist/
+build/
+
+# Local databases and logs
+*.log
+*.db
+*.sqlite
+
+# Environment variables (Security!)
+.env
+.env.local
