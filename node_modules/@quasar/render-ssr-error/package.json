@@ -1,0 +1,52 @@
+{
+  "name": "@quasar/render-ssr-error",
+  "version": "1.0.4",
+  "description": "Renders SSR errors for Quasar CLI",
+  "type": "module",
+  "main": "src/index.js",
+  "module": "src/index.js",
+  "author": {
+    "name": "Razvan Stoenescu",
+    "email": "razvan.stoenescu@gmail.com",
+    "url": "https://github.com/quasarframework"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/quasarframework/quasar"
+  },
+  "license": "MIT",
+  "bugs": "https://github.com/quasarframework/quasar/issues",
+  "homepage": "https://quasar.dev",
+  "funding": {
+    "type": "github",
+    "url": "https://donate.quasar.dev"
+  },
+  "engines": {
+    "node": ">= 16"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "stack-trace": "^1.0.0-pre2"
+  },
+  "devDependencies": {
+    "eslint": "^9.37.0",
+    "fs-extra": "^11.2.0",
+    "prismjs": "^1.29.0",
+    "vite": "^8.0.0",
+    "vue": "3.5.20",
+    "vue-router": "^5.0.0",
+    "@quasar/extras": "1.17.0",
+    "eslint-config-quasar": "0.0.3",
+    "@quasar/vite-plugin": "^1.11.0",
+    "quasar": "2.18.6"
+  },
+  "scripts": {
+    "lint": "eslint --cache --fix",
+    "dev": "cd src-ui && vite",
+    "build": "pnpm build:ui && pnpm build:package",
+    "build:ui": "cd src-ui && vite build",
+    "build:package": "node ./build/index.js"
+  }
+}

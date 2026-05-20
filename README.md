@@ -90,3 +90,59 @@ Discover how to provide valuable feedback on the Eco Ops App and documentation, 
  
     - 
 
+---
+
+## Exotopia visualization model — dataset summary
+
+Source data: NASA Exoplanet Archive (`exoplanets-viz.json`), as of build date.
+
+### Scope
+
+| Metric | Value |
+|---|---|
+| Confirmed exoplanets | **6,158** |
+| Host star systems | **4,590** |
+| Multi-planet systems | **1,043** |
+| Largest single system | KOI-351 (8 planets) |
+| Closest system | Proxima Cen (1.3 pc) |
+| Farthest system | KMT-2024-BLG-0176L (8,340 pc) |
+| Median distance | 377 pc |
+| Planets in habitable temp range (200–350 K) | **105** |
+
+### Host star spectral types
+
+| Type | Planet count |
+|---|---|
+| G (Sun-like) | 404 |
+| K (orange dwarf) | 400 |
+| M (red dwarf) | 363 |
+| F (yellow-white) | 159 |
+| A (white) | 16 |
+| B (blue-white) | 9 |
+| Unclassified | 4,797 |
+
+### Discovery methods
+
+| Method | Planets |
+|---|---|
+| Transit | 4,523 |
+| Radial Velocity | 1,180 |
+| Microlensing | 278 |
+| Direct Imaging | 94 |
+| Transit Timing Variations | 40 |
+| Eclipse Timing Variations | 17 |
+| Other | 26 |
+
+### Cosmic structure model
+
+The cosmic-level view (`/cosmic`) overlays real large-scale structure:
+
+| Structure | Count |
+|---|---|
+| Galaxy clusters rendered | 9 (Milky Way → Shapley Concentration) |
+| Cosmic voids rendered | 4 (Local, Sculptor, Boötes, KBC) |
+| Wormhole conduit markers | 3 (one per void with `hasConduit: true`) |
+| Filament connections | 11 (QuadraticBezier arcs between clusters) |
+
+Scale: 1 scene unit = 15 Mpc. Distance range rendered: 0 (Milky Way) to ~218 Mpc (Shapley Concentration).
+

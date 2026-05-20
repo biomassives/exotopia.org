@@ -1,0 +1,1 @@
+import{d as s}from"./pinia.00c5768d.js";import{r as t}from"./index.652a3c21.js";const c=s("portal",()=>{const e=t(!1),o=t(null),l=t(!1);function a(n){o.value=n,e.value=!0}function r(){e.value=!1,o.value=null}return{active:e,destination:o,showHelp:l,openPortal:a,closePortal:r}});export{c as u};
