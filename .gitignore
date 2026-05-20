@@ -1,22 +1,56 @@
-node_modules
-dist
-__pycache__
-datagathering/env
-# Dependencies
-node_modules/
-/.elixir_ls/
-/_build/
-/deps/
+# OS files
+.DS_Store
+Thumbs.db
 
-# Production/Build outputs
-dist/
-build/
+# IDE/Editor
+.idea/
+.vscode/
+*.swp
 
-# Local databases and logs
+# Logs and databases
 *.log
-*.db
 *.sqlite
 
-# Environment variables (Security!)
+# Dependency directories (if not using a package manager)
+node_modules/
+__pycache__/
+
+# Build files
+dist/
+build/
+*.exe
+*.dll
+
+# Local environment files
 .env
 .env.local
+
+
+
+# Build outputs
+dist/
+main_oct2.js
+*.html  # If these are generated (e.g., from a build process)
+*.js    # If minified/generated JS
+
+# Logs, exports, and temporary files
+*.csv
+*.json  # If auto-generated (e.g., `package-lock.json` is already ignored)
+*.webp
+*.gif
+
+# Python artifacts
+*.pyc
+__pycache__/
+
+# IDE/Editor
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment files
+.env*
+
