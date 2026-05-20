@@ -68,6 +68,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: 'Chain Support Matrix' },
       },
       {
+        path: 'glossary',
+        name: 'glossary',
+        component: () => import('src/pages/GlossaryPage.vue'),
+        meta: { title: 'Glossary' },
+      },
+      {
         path: 'eco-ops',
         name: 'eco-ops',
         component: () => import('src/pages/EcoOpsPage.vue'),

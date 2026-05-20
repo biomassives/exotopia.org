@@ -247,6 +247,7 @@ const realmLinks = [
   { to: '/mint',       icon: 'mdi-hexagon-multiple',  label: 'Mint NFT',      color: 'cyan-10'      },
   { to: '/mint-style', icon: 'mdi-tune-variant',      label: 'Style Builder', color: 'amber-9'      },
   { to: '/chains',     icon: 'mdi-link-variant',       label: 'Chains',        color: 'blue-grey-8'  },
+  { to: '/glossary',   icon: 'mdi-book-open-variant',  label: 'Glossary',      color: 'blue-grey-8'  },
 ]
 
 // ── Address search ────────────────────────────────────────────────────────────
