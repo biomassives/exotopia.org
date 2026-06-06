@@ -1,68 +1,9 @@
 <template>
-  <q-page class="bg-black overflow-hidden" style="height:100vh">
-    <canvas
-      ref="canvas"
-      class="three-canvas"
-      :class="{ 'canvas--group-select': groupSelectMode && mode === 'galaxy' }"
-      @mousedown="onCanvasMouseDown"
-      @mousemove="onHover"
-      @mouseleave="clearHover"
-      @click="onClick"
-    />
-
-    <!-- Drag-selection rectangle (rendered on top of canvas) -->
-    <div
-      v-if="selRect"
-      class="sel-rect"
-      :style="{
-        left:   Math.min(selRect.x1, selRect.x2) + 'px',
-        top:    Math.min(selRect.y1, selRect.y2) + 'px',
-        width:  Math.abs(selRect.x2 - selRect.x1) + 'px',
-        height: Math.abs(selRect.y2 - selRect.y1) + 'px',
-      }"
-    />
-
-    <!-- Group stats panel -->
-    <Transition name="fade">
-      <div v-if="selectedGroup.length > 0" class="group-panel">
-        <div class="gp-head">
-          <span class="gp-icon">◈</span>
-          <span class="gp-count">{{ selectedGroup.length }} SYSTEMS IN GROUP</span>
-          <button class="gp-close" @click="clearGroup">✕</button>
-        </div>
-        <div class="gp-stats">
-          <div class="gp-row">
-            <span class="gp-stat">
-              <span class="gp-stat-icon">★</span>
-              {{ groupStats.totalPlanets }} planets
-            </span>
-            <span class="gp-sep">·</span>
-            <span class="gp-stat gp-stat--hz">HZ {{ groupStats.hzPlanets }}</span>
-            <span class="gp-sep">·</span>
-            <span class="gp-stat">★★ {{ groupStats.multiStar }}</span>
-          </div>
-          <div class="gp-row">
-            <span class="gp-stat">⟳ {{ groupStats.totalMoons }} moons</span>
-            <span class="gp-sep">·</span>
-            <span class="gp-stat">avg {{ groupStats.avgDist }} pc</span>
-          </div>
-          <div class="gp-spec-row">
-            <span v-for="(n, cls) in groupStats.spectral" :key="cls"
-              class="gp-spec-chip" :style="{ color: spectralChipColor(String(cls)) }">
-              {{ cls }}:{{ n }}
-            </span>
-          </div>
-        </div>
-        <div class="gp-actions">
-          <button class="gp-btn gp-btn--primary" @click="focusGroup">
-            ⊙ Focus group
-          </button>
-          <button class="gp-btn" @click="enterNearestInGroup">
-            → Enter nearest
-          </button>
-        </div>
-      </div>
-    </Transition>
+  <q-page class="viz-overlay-page"
+    @mousemove="onHover"
+    @mouseleave="clearHover"
+    @click="onClick"
+  >
 
     <!-- Status overlay — top left -->
     <div class="space-overlay" style="top:12px;left:12px;max-width:320px">
@@ -130,9 +71,139 @@
       :hostname="currentSystem.hostname"
     />
 
+    <!-- ── Two-stage zoom HUD badge ─────────────────────────────── -->
+    <Transition name="zoom-badge">
+      <div v-if="zoomStage > 0 && mode === 'galaxy'" class="zoom-stage-badge">
+        <span class="zsb-stage">{{ zoomStage }}/2</span>
+        <span class="zsb-label">
+          {{ zoomStage === 1 ? `Approaching  ${approachSystem?.hostname ?? ''}  · click again to enter` : 'Entering system…' }}
+        </span>
+      </div>
+    </Transition>
+
     <!-- Planet entry fade overlay -->
     <Transition name="planet-fade">
       <div v-if="enteringPlanet" class="planet-entry-overlay" />
+    </Transition>
+
+    <!-- ── Persistent system preview panel (galaxy mode) ────────────── -->
+    <Transition name="preview-slide">
+      <div
+        v-if="previewSystem && mode === 'galaxy'"
+        class="sys-preview"
+        @mouseenter="cancelPreviewDismiss"
+        @mouseleave="startPreviewDismiss"
+      >
+        <!-- Header -->
+        <div class="sp-head">
+          <div class="sp-star-dot" :style="{ background: '#' + previewStarColor }" />
+          <div class="sp-title">
+            <div class="sp-name">{{ previewSystem.hostname }}</div>
+            <div class="sp-spec">
+              {{ previewSystem.st_spectype ?? '—' }}
+              <span v-if="previewSystem.sy_dist"> · {{ previewSystem.sy_dist.toFixed(1) }} pc</span>
+              <span v-if="previewSystem.st_teff"> · {{ Math.round(previewSystem.st_teff) }} K</span>
+            </div>
+          </div>
+          <q-btn flat dense round icon="close" size="xs" color="blue-grey-7"
+                 class="q-ml-auto" @click="previewSystem = null" />
+        </div>
+
+        <!-- Composition badges -->
+        <div class="sp-badges">
+          <span class="sp-badge sp-badge--planets">
+            ★ {{ previewSystem.planets.length }} planet{{ previewSystem.planets.length !== 1 ? 's' : '' }}
+          </span>
+          <span v-if="previewSystem.sy_mnum > 0" class="sp-badge sp-badge--moons">
+            ⟳ {{ previewSystem.sy_mnum }} moon{{ previewSystem.sy_mnum !== 1 ? 's' : '' }}
+          </span>
+          <span v-if="(previewSystem.sy_snum ?? 1) > 1" class="sp-badge sp-badge--binary">★★ binary</span>
+          <span v-if="isHZSystem(previewSystem)" class="sp-badge sp-badge--hz">HZ ✓</span>
+        </div>
+
+        <div class="sp-sep" />
+
+        <!-- Planet list -->
+        <div class="sp-planet-list">
+          <div
+            v-for="p in previewSystem.planets.slice(0, 4)"
+            :key="p.pl_name"
+            class="sp-planet"
+          >
+            <div class="sp-planet-dot" :style="{ background: '#' + planetColorHex(p) }" />
+            <span class="sp-planet-name">{{ p.pl_name }}</span>
+            <span class="sp-planet-stat">
+              {{ p.pl_eqt != null ? Math.round(p.pl_eqt) + ' K' : '' }}
+              {{ p.pl_rade != null ? ' · ' + p.pl_rade.toFixed(1) + 'R⊕' : '' }}
+            </span>
+          </div>
+          <div v-if="previewSystem.planets.length > 4" class="sp-more">
+            + {{ previewSystem.planets.length - 4 }} more
+          </div>
+        </div>
+
+        <!-- Activity row — settlement / art / eco-ops -->
+        <div class="sp-activity">
+          <span class="sp-act-badge" title="Settlements">⬡ —</span>
+          <span class="sp-act-badge" title="Art NFTs">♪ —</span>
+          <span class="sp-act-badge" title="Eco-ops check-ins">◈ —</span>
+        </div>
+
+        <!-- CTA -->
+        <q-btn
+          dense unelevated rounded
+          color="cyan-9" icon="mdi-arrow-right-circle-outline"
+          label="Enter System"
+          class="full-width sp-enter"
+          @click="enterSystemFromPreview"
+        />
+      </div>
+    </Transition>
+
+    <!-- ── Non-confirmed system panel (candidate / frontier / theoretical) ── -->
+    <Transition name="preview-slide">
+      <div
+        v-if="clickedNonConfirmed && mode === 'galaxy'"
+        class="sys-preview ncs-preview"
+      >
+        <div class="sp-head">
+          <div class="sp-star-dot" :style="{ background: clickedNonConfirmed.dotColor }" />
+          <div class="sp-title">
+            <div class="sp-name">{{ clickedNonConfirmed.hostname }}</div>
+            <div class="sp-spec">{{ clickedNonConfirmed.typeLabel }}</div>
+          </div>
+          <q-btn flat dense round icon="close" size="xs" color="blue-grey-7"
+                 class="q-ml-auto" @click="clickedNonConfirmed = null" />
+        </div>
+
+        <div class="sp-badges">
+          <span class="sp-badge" :style="{ borderColor: clickedNonConfirmed.badgeColor, color: clickedNonConfirmed.badgeColor }">
+            {{ clickedNonConfirmed.statusLabel }}
+          </span>
+          <span v-if="clickedNonConfirmed.dist" class="sp-badge">
+            {{ clickedNonConfirmed.dist }}
+          </span>
+          <span v-if="clickedNonConfirmed.spec" class="sp-badge">
+            {{ clickedNonConfirmed.spec }}
+          </span>
+        </div>
+
+        <div v-if="clickedNonConfirmed.note" class="sp-sep" />
+        <div v-if="clickedNonConfirmed.note" class="text-caption text-blue-grey-6 q-px-xs"
+             style="font-size:9px;line-height:1.5">
+          {{ clickedNonConfirmed.note }}
+        </div>
+
+        <div class="sp-sep" />
+
+        <q-btn
+          dense unelevated rounded
+          color="amber-9" icon="mdi-map-marker-plus"
+          label="Reserve for Settlement"
+          class="full-width sp-enter"
+          @click="$router.push('/mint')"
+        />
+      </div>
     </Transition>
 
     <!-- System-view panel -->
@@ -146,6 +217,10 @@
           {{ currentSystem.st_teff ? ' · ' + currentSystem.st_teff + ' K' : '' }}
           {{ currentSystem.sy_dist ? ' · ' + currentSystem.sy_dist.toFixed(1) + ' pc' : '' }}
         </div>
+        <!-- Stellar detail lens trigger -->
+        <button class="stellar-lens-btn" @click="starLensOpen = true">
+          <span class="slb-icon">⊕</span> View stellar detail
+        </button>
         <q-separator color="blue-grey-8" class="q-my-xs" />
         <div class="text-caption text-blue-grey-5 q-mb-xs">Click to zoom to planet</div>
         <div
@@ -195,13 +270,25 @@
           <span class="rarity-desc">{{ selectedRarity.desc }}</span>
         </div>
 
-        <q-separator color="blue-grey-8" class="q-mb-sm" />
-        <div v-for="(val, key) in planetCardStats" :key="key"
-             class="row justify-between q-mb-xs">
-          <span class="text-caption text-blue-grey-5">{{ key }}</span>
-          <span class="text-caption text-blue-grey-2 text-right" style="max-width:58%">{{ val }}</span>
-        </div>
-        <q-separator color="blue-grey-8" class="q-mt-sm q-mb-sm" />
+        <!-- Data sheet accordion toggle -->
+        <button class="planet-card-accordion" @click="planetCardExpanded = !planetCardExpanded">
+          <span class="pca-arrow">{{ planetCardExpanded ? '▾' : '▸' }}</span>
+          <span class="pca-label">DATA SHEET</span>
+          <span class="pca-hint">{{ planetCardExpanded ? 'collapse' : Object.keys(planetCardStats).length + ' fields' }}</span>
+        </button>
+
+        <!-- Collapsible stats body -->
+        <Transition name="pca-slide">
+          <div v-if="planetCardExpanded" class="planet-card-stats">
+            <div v-for="(val, key) in planetCardStats" :key="key"
+                 class="row justify-between q-mb-xs">
+              <span class="text-caption text-blue-grey-5">{{ key }}</span>
+              <span class="text-caption text-blue-grey-2 text-right" style="max-width:58%">{{ val }}</span>
+            </div>
+          </div>
+        </Transition>
+
+        <q-separator color="blue-grey-8" class="q-mt-xs q-mb-sm" />
         <q-btn
           dense rounded unelevated
           color="cyan-8" icon="public" label="Enter Surface"
@@ -219,10 +306,10 @@
       <button
         :class="['gl-pill', { 'gl-pill--on': filterHZ }]"
         @click="filterHZ = !filterHZ"
-        title="Show only habitable-zone systems — others fade to near-invisible"
+        title="Highlight systems with a planet in the habitable zone — others fade"
       >
         <span class="gl-pip" :style="{ background: filterHZ ? '#22ff88' : '#3a5a4a' }" />
-        HZ WORLDS
+        HABITABLE ZONE
       </button>
       <button
         :class="['gl-pill', { 'gl-pill--on': filterNearby }]"
@@ -235,18 +322,10 @@
       <button
         :class="['gl-pill', { 'gl-pill--on': showPredicted }]"
         @click="showPredicted = !showPredicted"
-        title="Toggle predicted candidate and frontier star systems"
+        title="Toggle candidate and frontier star systems predicted by survey zones"
       >
         <span class="gl-pip" :style="{ background: showPredicted ? '#f0a030' : '#3a2d10' }" />
-        PREDICTED
-      </button>
-      <button
-        :class="['gl-pill', { 'gl-pill--on': groupSelectMode }]"
-        @click="toggleGroupSelect"
-        title="Drag to draw a selection box over star systems — release to group them"
-      >
-        <span class="gl-pip" :style="{ background: groupSelectMode ? '#ff9900' : '#3a2800' }" />
-        GROUP SELECT
+        FRONTIER
       </button>
     </div>
 
@@ -279,44 +358,88 @@
         <span class="sys-label">EARTH ↔</span>
       </button>
 
+      <!-- Release orbit (shown while co-orbiting) -->
+      <button v-if="focusedPlanet && planetCamFollow && planetCamMode === 'orbit'"
+        class="sys-btn sys-btn--active"
+        @click="togglePlanetFollow('orbit')"
+        title="Release co-orbit — return to free camera">
+        <span class="sys-icon">⊙</span>
+        <span class="sys-label">RELEASE</span>
+      </button>
+
+      <!-- DK.MAT — elevated dark matter scope (always available when planet focused) -->
+      <button v-if="focusedPlanet"
+        class="sys-btn sys-btn--dkmat"
+        :class="{ 'sys-btn--active': planetCamFollow && planetCamMode === 'dkmat' }"
+        @click="togglePlanetFollow('dkmat')"
+        title="Dark matter scope — ascend above the orbital plane">
+        <span class="sys-icon">◈</span>
+        <span class="sys-label">DK.MAT</span>
+      </button>
+
+
     </div>
 
-    <!-- Legend — bottom left -->
-    <div class="space-overlay" style="bottom:92px;left:14px">
-      <div class="legend-block q-pa-sm">
-        <div class="legend-section">STAR TYPE</div>
-        <div v-for="s in starLegend" :key="s.label" class="legend-row">
-          <span class="legend-dot" :style="{ background: s.color }" />
-          <span class="text-caption text-blue-grey-4">{{ s.label }}</span>
+    <!-- Legend toggle + panel — bottom left, hidden by default -->
+    <div class="legend-anchor">
+      <!-- Toggle button — always visible -->
+      <button class="legend-toggle" @click="showLegend = !showLegend" :title="showLegend ? 'Hide key' : 'Show map key'">
+        <span class="legend-toggle__icon">◉</span>
+        <span class="legend-toggle__label">{{ showLegend ? 'HIDE KEY' : 'MAP KEY' }}</span>
+      </button>
+
+      <!-- Panel — shown on demand -->
+      <Transition name="legend-slide">
+        <div v-if="showLegend" class="legend-block q-pa-sm">
+          <div class="legend-section">STAR TYPE</div>
+          <div v-for="s in starLegend" :key="s.label" class="legend-row">
+            <span class="legend-dot" :style="{ background: s.color }" />
+            <span class="text-caption text-blue-grey-4">{{ s.label }}</span>
+          </div>
+
+          <!-- Tier 1: PLANET TEMP accordion -->
+          <button class="legend-accordion" @click="showPlanetLegend = !showPlanetLegend">
+            <span class="legend-accordion__arrow">{{ showPlanetLegend ? '▾' : '▸' }}</span>
+            <span class="legend-section legend-section--inline">PLANET TEMP</span>
+          </button>
+          <template v-if="showPlanetLegend">
+            <div v-for="s in planetLegend" :key="s.label" class="legend-row legend-row--indented">
+              <span class="legend-dot" :style="{ background: s.color }" />
+              <span class="text-caption text-blue-grey-4">{{ s.label }}</span>
+            </div>
+          </template>
+
+          <!-- Tier 2: ACTIVITY PIPS + HOVER BADGES accordion -->
+          <button class="legend-accordion" @click="showActivityLegend = !showActivityLegend">
+            <span class="legend-accordion__arrow">{{ showActivityLegend ? '▾' : '▸' }}</span>
+            <span class="legend-section legend-section--inline">ACTIVITY &amp; BADGES</span>
+          </button>
+          <template v-if="showActivityLegend">
+            <div class="legend-section legend-section--sub">ACTIVITY PIPS</div>
+            <div v-for="s in pipLegend" :key="s.label" class="legend-row legend-row--indented">
+              <span class="legend-dot legend-pip" :style="{ background: s.color }" />
+              <span class="text-caption text-blue-grey-4">{{ s.label }}</span>
+            </div>
+            <div class="legend-section legend-section--sub" style="margin-top:4px">HOVER BADGES</div>
+            <div class="legend-badge-row legend-badge-row--indented">
+              <span class="legend-badge" style="color:#b0e0b0">⬡ n</span>
+              <span class="text-caption text-blue-grey-5">settlements</span>
+            </div>
+            <div class="legend-badge-row legend-badge-row--indented">
+              <span class="legend-badge" style="color:#c8a0e0">♪ n</span>
+              <span class="text-caption text-blue-grey-5">art / $BARS</span>
+            </div>
+            <div class="legend-badge-row legend-badge-row--indented">
+              <span class="legend-badge" style="color:#a0c8e0">◈ n</span>
+              <span class="text-caption text-blue-grey-5">eco-ops</span>
+            </div>
+            <div class="legend-badge-row legend-badge-row--indented">
+              <span class="legend-badge" style="color:#888">—</span>
+              <span class="text-caption text-blue-grey-6">no data yet</span>
+            </div>
+          </template>
         </div>
-        <div class="legend-section" style="margin-top:6px">PLANET TEMP</div>
-        <div v-for="s in planetLegend" :key="s.label" class="legend-row">
-          <span class="legend-dot" :style="{ background: s.color }" />
-          <span class="text-caption text-blue-grey-4">{{ s.label }}</span>
-        </div>
-        <div class="legend-section" style="margin-top:6px">ACTIVITY PIPS</div>
-        <div v-for="s in pipLegend" :key="s.label" class="legend-row">
-          <span class="legend-dot legend-pip" :style="{ background: s.color }" />
-          <span class="text-caption text-blue-grey-4">{{ s.label }}</span>
-        </div>
-        <div class="legend-section" style="margin-top:6px">HOVER BADGES</div>
-        <div class="legend-badge-row">
-          <span class="legend-badge" style="color:#b0e0b0">⬡ n</span>
-          <span class="text-caption text-blue-grey-5">settlements</span>
-        </div>
-        <div class="legend-badge-row">
-          <span class="legend-badge" style="color:#c8a0e0">♪ n</span>
-          <span class="text-caption text-blue-grey-5">art / $BARS</span>
-        </div>
-        <div class="legend-badge-row">
-          <span class="legend-badge" style="color:#a0c8e0">◈ n</span>
-          <span class="text-caption text-blue-grey-5">eco-ops</span>
-        </div>
-        <div class="legend-badge-row">
-          <span class="legend-badge" style="color:#888">—</span>
-          <span class="text-caption text-blue-grey-6">no data yet</span>
-        </div>
-      </div>
+      </Transition>
     </div>
 
     <!-- Loading -->
@@ -327,6 +450,13 @@
       </div>
     </Transition>
 
+    <!-- ── Stellar detail lens overlay ──────────────────────────────── -->
+    <StarDetailLens
+      v-if="starLensOpen && currentSystem"
+      :sys="currentSystem"
+      @close="starLensOpen = false"
+    />
+
     <DefenderNav
       ref="defenderNav"
       :mode="mode === 'system' ? 'system' : 'cosmic'"
@@ -336,6 +466,7 @@
       @portalTo="onDefenderPortalTo"
       @contextZoom="onContextZoom"
       @returnToPrev="onReturnToPrev"
+      @ascendRealm="onAscendRealm"
     />
   </q-page>
 </template>
@@ -352,6 +483,7 @@
  */
 
 import { ref, computed, onMounted, onUnmounted, nextTick, watch, watchEffect } from 'vue'
+import { useVizRenderer } from 'src/composables/useVizRenderer'
 import { useRouter, useRoute }                             from 'vue-router'
 import * as THREE                                 from 'three'
 import { OrbitControls }                          from 'three/examples/jsm/controls/OrbitControls.js'
@@ -362,16 +494,44 @@ import {
   planetColor,
   raDecToVec3,
   distToViz,
+  hostnameToSeed,
   auToViz,
   fallbackAU,
+  disposeScene,
 } from 'src/lib/three-utils'
-import { makeStarMesh, teffToSpectral } from 'src/lib/star-sprites'
+import { makeStarMesh, teffToSpectral, SPECTRAL_RGB } from 'src/lib/star-sprites'
 import { logNavEvent }                  from 'src/lib/nav-history'
 import NavigatorInset                   from 'src/components/NavigatorInset.vue'
+import StarDetailLens                   from 'src/components/StarDetailLens.vue'
 import type { StarSystem, Planet }      from 'src/stores/galaxy'
 import DefenderNav from 'src/components/DefenderNav.vue'
 import type { DefenderNavData, PlanetStripEntry, StellarConfig, DefenderTarget } from 'src/lib/defender-nav.types'
 import { usePortalStore } from 'src/stores/portal'
+
+// ── Galaxy star shader — one draw call for all ~5 000 confirmed systems ───────
+// Vertex: size-attenuated points (pSize in scene-unit scale; 700 / depth → pixels).
+// Fragment: smooth circular falloff + additive blending — no texture needed.
+
+const STAR_VERT = `
+attribute vec3  aColor;
+attribute float pSize;
+varying   vec3  vColor;
+void main() {
+  vColor = aColor;
+  vec4 mv = modelViewMatrix * vec4(position, 1.0);
+  gl_PointSize = clamp(pSize * 700.0 / -mv.z, 0.5, 30.0);
+  gl_Position  = projectionMatrix * mv;
+}
+`
+const STAR_FRAG = `
+varying vec3 vColor;
+void main() {
+  float d = length(gl_PointCoord - vec2(0.5));
+  if (d > 0.5) discard;
+  float a = smoothstep(0.5, 0.08, d);
+  gl_FragColor = vec4(vColor * a, 1.0);
+}
+`
 
 // ── Store / router ────────────────────────────────────────────────────────────
 
@@ -382,8 +542,55 @@ const route       = useRoute()
 
 // ── UI state ──────────────────────────────────────────────────────────────────
 
-const canvas          = ref<HTMLCanvasElement | null>(null)
+// canvas ref removed — canvas is in MainLayout
 const loaded          = ref(false)
+const showLegend      = ref(false)   // map key panel — hidden by default
+const showPlanetLegend   = ref(false)  // accordion tier 1 — planet temp
+const showActivityLegend = ref(false)  // accordion tier 2 — pips + badges
+const starLensOpen    = ref(false)   // stellar detail lens overlay
+
+// ── Lagrangian planet-camera follow ──────────────────────────────────────────
+// When enabled the camera rides co-orbitally alongside the focused planet,
+// maintaining a trailing elevated position that updates each animation tick.
+//   'orbit'  — trailing behind the planet, elevated ~35° above orbital plane
+//   'dkmat'  — high above the system, looking down (dark-matter scope view)
+const planetCamFollow = ref(false)
+const planetCamMode   = ref<'orbit' | 'dkmat'>('orbit')
+
+// ── Time dilation at planet surface vs L4 companion altitude ─────────────────
+// Gravitational time dilation: Δτ/Δt ≈ 1 − GM/(Rc²)
+// Shown in the planet data sheet whenever a planet is selected.
+const timeDilationData = computed(() => {
+  const planet = selectedPlanet.value
+  if (!planet) return null
+  const G     = 6.674e-11                                  // m³ kg⁻¹ s⁻²
+  const c2    = 8.988e16                                   // c² m²/s²
+  const M     = (planet.pl_bmasse  ?? 1.0) * 5.972e24     // kg (Earth masses)
+  const Rsurf = (planet.pl_rade    ?? 1.0) * 6.371e6      // m (Earth radii)
+  // Dilation at surface vs infinite: Δτ/t = GM/(Rc²)
+  const dilSurf   = G * M / (Rsurf * c2)   // dimensionless
+  // Convert to ns/day: 1 day = 86400 s, × 1e9 for ns
+  const nsPerDay  = dilSurf * 86400 * 1e9
+  // Escape velocity at surface: v_esc = sqrt(2GM/R) — gives sense of gravity
+  const vEsc      = Math.sqrt(2 * G * M / Rsurf) / 1000  // km/s
+  return {
+    nsPerDay:  nsPerDay.toFixed(nsPerDay < 1 ? 3 : 1),
+    vEscKms:   vEsc.toFixed(1),
+    massLabel: (planet.pl_bmasse ?? 1.0).toFixed(2) + ' M⊕',
+    radLabel:  (planet.pl_rade   ?? 1.0).toFixed(2) + ' R⊕',
+  }
+})
+// Orbital parameters stored when a planet is focused (for the follow calculation)
+let followOrbR  = 0
+let followIncl  = 0
+let followStarPos = new THREE.Vector3()
+
+// ── Two-stage zoom state ──────────────────────────────────────────────────────
+// Stage 1: approach — camera moves 55% toward target, star enlarges, context visible
+// Stage 2: enter   — full system view (enterSystemView call)
+const zoomStage       = ref<0|1|2>(0)   // 0=galaxy, 1=approaching, 2=system
+const approachSystem  = ref<StarSystem | null>(null)
+let   approachTimer:   ReturnType<typeof setTimeout> | null = null
 const showPredicted   = ref(false)   // opt-in: loads candidate + frontier tiers
 
 // ── Galaxy view filter layers ─────────────────────────────────────────────────
@@ -399,17 +606,23 @@ function isHZSystem(sys: StarSystem): boolean {
 }
 
 function applyGalaxyFilter() {
-  for (const marker of galaxyMarkers) {
+  if (!galaxyStarPoints || !_starBaseColors.length) return
+  const attr = galaxyStarPoints.geometry.attributes['aColor'] as THREE.BufferAttribute
+  const arr  = attr.array as Float32Array
+
+  for (let i = 0; i < galaxyMarkers.length; i++) {
+    const marker = galaxyMarkers[i]!
     const sys    = marker.userData.system as StarSystem | undefined
-    const sprite = marker.userData.sprite as THREE.Sprite | undefined
-    if (!sprite || !sys) continue
-    const mat    = sprite.material as THREE.SpriteMaterial
-    const baseOp = (marker.userData.baseOpacity as number | undefined) ?? 0.88
-    let   tgt    = baseOp
-    if (filterHZ.value     && !isHZSystem(sys))                 tgt = Math.min(tgt, 0.04)
-    if (filterNearby.value && (sys.sy_dist ?? Infinity) > 150)  tgt = Math.min(tgt, 0.04)
-    mat.opacity = tgt
+    if (!sys) continue
+    let scale = 1.0
+    if (filterHZ.value     && !isHZSystem(sys))                scale = Math.min(scale, 0.04)
+    if (filterNearby.value && (sys.sy_dist ?? Infinity) > 150) scale = Math.min(scale, 0.04)
+    const bi = i * 3
+    arr[bi]     = _starBaseColors[bi]!     * scale
+    arr[bi + 1] = _starBaseColors[bi + 1]! * scale
+    arr[bi + 2] = _starBaseColors[bi + 2]! * scale
   }
+  attr.needsUpdate = true
 }
 
 watch([filterHZ, filterNearby], ([hz, nearby]) => {
@@ -418,195 +631,6 @@ watch([filterHZ, filterNearby], ([hz, nearby]) => {
   if (nearby)  logNavEvent('nearby_filter', { activatedAt: Date.now() })
 })
 
-// ── Group selection ───────────────────────────────────────────────────────────
-// Drag-select: draw a screen-space rectangle in galaxy mode to group systems.
-
-const groupSelectMode = ref(false)
-const selectedGroup   = ref<StarSystem[]>([])
-
-// Live drag rectangle {x1,y1,x2,y2} in screen pixels
-const selRect = ref<{ x1: number; y1: number; x2: number; y2: number } | null>(null)
-let   selDragging = false
-let   selStart    = { x: 0, y: 0 }
-
-function toggleGroupSelect() {
-  groupSelectMode.value = !groupSelectMode.value
-  if (!groupSelectMode.value) clearGroup()
-}
-
-function clearGroup() {
-  selectedGroup.value = []
-  // Restore sprite opacities
-  applyGroupHighlight([])
-}
-
-// Project a world-space position to screen pixels.
-// Returns null when behind the camera or outside the viewport.
-function worldToScreen(pos: THREE.Vector3): { x: number; y: number } | null {
-  const v = pos.clone().project(camera)
-  if (v.z > 1) return null    // behind camera
-  const x = (v.x + 1) / 2 * window.innerWidth
-  const y = (-v.y + 1) / 2 * window.innerHeight
-  return { x, y }
-}
-
-function computeGroupSelection(r: typeof selRect.value) {
-  if (!r) return
-  const minX = Math.min(r.x1, r.x2), maxX = Math.max(r.x1, r.x2)
-  const minY = Math.min(r.y1, r.y2), maxY = Math.max(r.y1, r.y2)
-
-  // Minimum rectangle size — smaller = single click, not a drag
-  if (maxX - minX < 8 && maxY - minY < 8) { selectedGroup.value = []; return }
-
-  const group: StarSystem[] = []
-  for (const marker of galaxyMarkers) {
-    if (!marker.visible || !marker.userData.system) continue
-    const sp = worldToScreen(marker.position)
-    if (!sp) continue
-    if (sp.x >= minX && sp.x <= maxX && sp.y >= minY && sp.y <= maxY) {
-      group.push(marker.userData.system as StarSystem)
-    }
-  }
-  selectedGroup.value = group
-  applyGroupHighlight(group)
-}
-
-// Dim non-selected systems; boost selected ones.
-function applyGroupHighlight(group: StarSystem[]) {
-  const inGroup = new Set(group.map(s => s.hostname))
-  for (const marker of galaxyMarkers) {
-    const sprite = marker.userData.sprite as THREE.Sprite | undefined
-    if (!sprite) continue
-    const mat    = sprite.material as THREE.SpriteMaterial
-    const base   = (marker.userData.baseOpacity as number | undefined) ?? 0.88
-
-    if (group.length === 0) {
-      // No selection — restore filter state
-      mat.opacity = base
-      applyGalaxyFilter()
-    } else if (inGroup.has(marker.userData.system?.hostname)) {
-      mat.opacity = Math.min(1, base * 1.1)   // selected: at/above base
-      sprite.scale.setScalar((sprite.scale.x > 0 ? sprite.scale.x : 4) * 1.0)
-    } else {
-      mat.opacity = Math.max(0.04, base * 0.12)  // not selected: ghosted
-    }
-  }
-}
-
-// ── Group stats ────────────────────────────────────────────────────────────────
-
-const groupStats = computed(() => {
-  const g = selectedGroup.value
-  if (!g.length) return { totalPlanets: 0, hzPlanets: 0, totalMoons: 0, multiStar: 0, avgDist: '—', spectral: {} }
-
-  let totalPlanets = 0, hzPlanets = 0, totalMoons = 0, multiStar = 0, distSum = 0, distCount = 0
-  const spectral: Record<string, number> = {}
-
-  for (const sys of g) {
-    totalPlanets += sys.planets.length
-    totalMoons   += sys.sy_mnum ?? 0
-    if ((sys.sy_snum ?? 1) > 1) multiStar++
-    if (sys.sy_dist) { distSum += sys.sy_dist; distCount++ }
-    hzPlanets += sys.planets.filter(p =>
-      (p.pl_eqt != null && p.pl_eqt > 200 && p.pl_eqt < 380) ||
-      (p.pl_orbsmax != null && p.pl_orbsmax > 0.7 && p.pl_orbsmax < 1.8)
-    ).length
-
-    const cls = (sys.st_spectype?.[0]?.toUpperCase()) ?? '?'
-    spectral[cls] = (spectral[cls] ?? 0) + 1
-  }
-
-  // Sort spectral by count, keep top 5
-  const sorted = Object.fromEntries(
-    Object.entries(spectral).sort((a, b) => b[1] - a[1]).slice(0, 5)
-  )
-
-  return {
-    totalPlanets, hzPlanets, totalMoons, multiStar,
-    avgDist: distCount ? Math.round(distSum / distCount).toString() : '—',
-    spectral: sorted,
-  }
-})
-
-function spectralChipColor(cls: string): string {
-  const m: Record<string, string> = { O: '#9bb0ff', B: '#aabfff', A: '#cad7ff', F: '#fff4ea', G: '#ffeecc', K: '#ffcc88', M: '#ffaa66' }
-  return m[cls] ?? '#7799aa'
-}
-
-// ── Group actions ─────────────────────────────────────────────────────────────
-
-function focusGroup() {
-  const g = selectedGroup.value
-  if (!g.length || !renderer) return
-
-  // Find 3D positions for all systems in the group
-  const positions: THREE.Vector3[] = []
-  for (const sys of g) {
-    const m = galaxyMarkers.find(mk => mk.userData.system?.hostname === sys.hostname)
-    if (m) positions.push(m.position.clone())
-  }
-  if (!positions.length) return
-
-  // Compute centroid and max spread
-  const centroid = positions.reduce((a, b) => a.clone().add(b), new THREE.Vector3()).divideScalar(positions.length)
-  const maxDist  = positions.reduce((m, p) => Math.max(m, centroid.distanceTo(p)), 0)
-  const camDist  = Math.max(maxDist * 2.2, 80)
-
-  const fromCam = camera.position.clone().sub(centroid).normalize()
-
-  gsap.to(controls.target, {
-    duration: 1.4, x: centroid.x, y: centroid.y, z: centroid.z,
-    ease: 'power2.inOut', onUpdate: () => controls.update(),
-  })
-  gsap.to(camera.position, {
-    duration: 2.0,
-    x: centroid.x + fromCam.x * camDist,
-    y: centroid.y + fromCam.y * camDist + camDist * 0.18,
-    z: centroid.z + fromCam.z * camDist,
-    ease: 'power3.inOut', onUpdate: () => controls.update(),
-  })
-}
-
-function enterNearestInGroup() {
-  const g = selectedGroup.value
-  if (!g.length) return
-  // Find the system closest to the camera
-  const nearest = g.reduce((best, sys) => {
-    const m    = galaxyMarkers.find(mk => mk.userData.system?.hostname === sys.hostname)
-    if (!m) return best
-    const dist = camera.position.distanceTo(m.position)
-    return (!best.dist || dist < best.dist) ? { sys, dist } : best
-  }, {} as { sys?: StarSystem; dist?: number })
-  if (nearest.sys) {
-    clearGroup()
-    enterSystemView(nearest.sys)
-  }
-}
-
-// ── Mouse handlers for drag-select ────────────────────────────────────────────
-
-function onCanvasMouseDown(e: MouseEvent) {
-  if (mode.value !== 'galaxy' || !groupSelectMode.value) return
-  selDragging = true
-  selStart    = { x: e.clientX, y: e.clientY }
-  selRect.value = { x1: e.clientX, y1: e.clientY, x2: e.clientX, y2: e.clientY }
-
-  // Listen for mousemove + mouseup on the window so drag outside canvas works
-  window.addEventListener('mousemove', onSelMouseMove)
-  window.addEventListener('mouseup',   onSelMouseUp, { once: true })
-}
-
-function onSelMouseMove(e: MouseEvent) {
-  if (!selDragging) return
-  selRect.value = { x1: selStart.x, y1: selStart.y, x2: e.clientX, y2: e.clientY }
-}
-
-function onSelMouseUp(e: MouseEvent) {
-  selDragging = false
-  window.removeEventListener('mousemove', onSelMouseMove)
-  computeGroupSelection(selRect.value)
-  selRect.value = null
-}
 const mode            = ref<'galaxy' | 'system'>('galaxy')
 const currentSystem   = ref<StarSystem | null>(null)
 const selectedPlanet  = ref<Planet | null>(null)
@@ -632,18 +656,66 @@ const hoveredInfo  = ref<HoverInfo | null>(null)
 const hoverStyle   = ref({ left: '0px', top: '0px' })
 let   hoverTimer: ReturnType<typeof setTimeout> | null = null
 
+// ── Non-confirmed system click panel ─────────────────────────────────────────
+interface NonConfirmedInfo {
+  hostname:    string
+  typeLabel:   string
+  statusLabel: string
+  dotColor:    string
+  badgeColor:  string
+  dist?:       string
+  spec?:       string
+  note?:       string
+}
+const clickedNonConfirmed = ref<NonConfirmedInfo | null>(null)
+
+// ── Persistent system preview panel ──────────────────────────────────────────
+const previewSystem       = ref<StarSystem | null>(null)
+let   previewDwellTimer:   ReturnType<typeof setTimeout> | null = null
+let   previewDismissTimer: ReturnType<typeof setTimeout> | null = null
+
+const previewStarColor = computed(() =>
+  previewSystem.value
+    ? starColorFromTeff(previewSystem.value.st_teff).getHexString()
+    : '446688'
+)
+
+function cancelPreviewDismiss() {
+  if (previewDismissTimer) { clearTimeout(previewDismissTimer); previewDismissTimer = null }
+}
+
+function startPreviewDismiss() {
+  cancelPreviewDismiss()
+  previewDismissTimer = setTimeout(() => { previewSystem.value = null; previewDismissTimer = null }, 4000)
+}
+
+function enterSystemFromPreview() {
+  const sys = previewSystem.value
+  previewSystem.value = null
+  cancelPreviewDismiss()
+  if (sys) enterSystemView(sys)
+}
+
+const planetCardExpanded = ref(false)
+watch(selectedPlanet, () => { planetCardExpanded.value = false })
+
 const planetCardStats = computed<Record<string, string>>(() => {
-  const p = selectedPlanet.value
+  const p  = selectedPlanet.value
+  const td = timeDilationData.value
   if (!p) return {}
   return {
-    ...(p.pl_rade    != null ? { 'Radius':  p.pl_rade.toFixed(2)    + ' R⊕' } : {}),
-    ...(p.pl_bmasse  != null ? { 'Mass':    p.pl_bmasse.toFixed(1)   + ' M⊕' } : {}),
-    ...(p.pl_eqt     != null ? { 'Eq. Temp': Math.round(p.pl_eqt)   + ' K'  } : {}),
-    ...(p.pl_orbsmax != null ? { 'Orbit':   p.pl_orbsmax.toFixed(3)  + ' AU' } : {}),
-    ...(p.pl_orbper  != null ? { 'Period':  p.pl_orbper.toFixed(1)   + ' d'  } : {}),
-    ...(p.pl_insol   != null ? { 'Insolation': p.pl_insol.toFixed(2) + ' S⊕' } : {}),
-    ...(p.discoverymethod   ? { 'Detected': p.discoverymethod } : {}),
+    ...(p.pl_rade    != null ? { 'Radius':       p.pl_rade.toFixed(2)    + ' R⊕' } : {}),
+    ...(p.pl_bmasse  != null ? { 'Mass':         p.pl_bmasse.toFixed(1)  + ' M⊕' } : {}),
+    ...(p.pl_eqt     != null ? { 'Eq. Temp':     Math.round(p.pl_eqt)   + ' K'  } : {}),
+    ...(p.pl_orbsmax != null ? { 'Orbit':        p.pl_orbsmax.toFixed(3) + ' AU' } : {}),
+    ...(p.pl_orbper  != null ? { 'Period':       p.pl_orbper.toFixed(1)  + ' d'  } : {}),
+    ...(p.pl_insol   != null ? { 'Insolation':   p.pl_insol.toFixed(2)  + ' S⊕' } : {}),
+    ...(p.discoverymethod   ? { 'Detected':      p.discoverymethod }             : {}),
     'Atmosphere': atmosphereDesc(p),
+    ...(td ? {
+      'Time dilation': td.nsPerDay + ' ns/day · surface',
+      'Escape velocity': td.vEscKms + ' km/s',
+    } : {}),
     'Settlements': 'None logged',
   }
 })
@@ -664,15 +736,21 @@ const statusText = computed(() => {
 
 // ── Three.js refs ─────────────────────────────────────────────────────────────
 
-let renderer:      THREE.WebGLRenderer
-let scene:         THREE.Scene
-let camera:        THREE.PerspectiveCamera
-let controls:      OrbitControls
+const viz = useVizRenderer()
+let renderer: THREE.WebGLRenderer     | null = null
+let scene:    THREE.Scene             | null = null
+let camera:   THREE.PerspectiveCamera | null = null
+let controls: OrbitControls           | null = null
+let _stopTick: (() => void) | null = null
+const pageGroup = new THREE.Group()
 let raycaster:     THREE.Raycaster
-let animId:        number
+// animId removed — RAF owned by useVizRenderer
 
-let galaxyMarkers:      THREE.Mesh[]       = []
-let galaxyVisuals:      THREE.Object3D[]  = []   // sprites + HZ rings; show/hide with markers
+let galaxyMarkers:      THREE.Mesh[]      = []
+// Galaxy-view Points objects — 2 draw calls replace ~10 000 individual sprites
+let galaxyStarPoints:   THREE.Points | null = null
+let galaxyPipPoints:    THREE.Points | null = null
+let _starBaseColors:    Float32Array        = new Float32Array(0)   // original colors for filter restore
 let theoreticalMarkers: THREE.Mesh[]      = []
 let frontierMarkers:    THREE.Mesh[]      = []
 let candidateMarkers:   THREE.Mesh[]      = []
@@ -684,130 +762,360 @@ let focusedPlanetMesh:  THREE.Mesh | null = null
 let currentHovered: THREE.Mesh | null = null
 let binaryAngle = 0
 
+// Cached stellar config — set once on system entry, cleared on exit.
+// Avoids allocating a new StellarConfig object every animation frame.
+let _stellarCfgCache: StellarConfig | null = null
+
+// Pre-allocated scratch vectors for the planet-follow inner loop.
+// Prevents Vector3 GC churn at 60fps.
+const _fs = {
+  P:       new THREE.Vector3(),
+  fromStar: new THREE.Vector3(),
+  tang:    new THREE.Vector3(),
+  orbNorm: new THREE.Vector3(),
+  camTgt:  new THREE.Vector3(),
+  lookTgt: new THREE.Vector3(),
+}
+
+// DefenderNav throttle — redraws at ~10fps (every 6 render frames).
+let _navThrottle = 0
+
 const mouseNDC    = new THREE.Vector2()
 const defenderNav = ref<InstanceType<typeof DefenderNav> | null>(null)
 
 // ── Initialise Three.js ───────────────────────────────────────────────────────
 
 function initScene() {
-  if (!canvas.value) return
+  renderer = viz.renderer
+  scene    = viz.scene
+  camera   = viz.camera
+  controls = viz.controls
+  if (!renderer || !scene || !camera || !controls) return
 
-  renderer = new THREE.WebGLRenderer({ canvas: canvas.value, antialias: true })
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
-  renderer.setSize(window.innerWidth, window.innerHeight)
-  renderer.toneMapping        = THREE.ACESFilmicToneMapping
-  renderer.toneMappingExposure = 0.85
-
-  scene = new THREE.Scene()
   scene.background = new THREE.Color(0x02040a)
+  scene.fog        = null
 
-  camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 5000)
+  camera.fov  = 60
+  camera.near = 0.1
+  camera.far  = 5000
   camera.position.set(0, 0, 600)
+  camera.lookAt(0, 0, 0)
+  camera.updateProjectionMatrix()
 
-  controls = new OrbitControls(camera, renderer.domElement)
-  controls.enableDamping  = true
-  controls.dampingFactor  = 0.12
-  controls.rotateSpeed    = 0.4
-  controls.zoomSpeed      = 1.2
-  controls.maxDistance    = 2500
-  controls.minDistance    = 4
+  controls.enableDamping = true
+  controls.dampingFactor = 0.12
+  controls.rotateSpeed   = 0.4
+  controls.zoomSpeed     = 1.2
+  controls.maxDistance   = 2500
+  controls.minDistance   = 4
+  controls.zoomToCursor  = false
 
   raycaster = new THREE.Raycaster()
 
-  // Scene lighting
-  scene.add(new THREE.AmbientLight(0x111822, 0.8))
+  const amb = new THREE.AmbientLight(0x111822, 0.8)
   const dir = new THREE.DirectionalLight(0xffffff, 0.35)
   dir.position.set(1, 1, 1)
-  scene.add(dir)
+  pageGroup.add(amb, dir)
+  scene.add(pageGroup)
 
-  window.addEventListener('resize', onResize)
-  startLoop()
+  buildGalacticBackground()
+}
+
+// ── Galactic disk background — aligned to true galactic plane ─────────────────
+//
+// Galactic north pole: RA 192.85°, Dec 27.13° (equatorial → scene transform
+// matches raDecToVec3 used for all star system positions, so the disk sits
+// exactly where the confirmed systems cluster — along the galactic plane).
+//
+// The camera at (0,0,600) sees the disk ~78° from face-on (nearly edge-on),
+// giving the classic Milky Way band effect.  Star systems confirmed by Kepler/
+// TESS/ground surveys concentrate near galactic latitude 0° and should align
+// with this band.
+
+function makeGalacticDiskTexture(): THREE.CanvasTexture {
+  const S = 1024, cx = S / 2
+  const cv = document.createElement('canvas')
+  cv.width = cv.height = S
+  const ctx = cv.getContext('2d')!
+
+  // Diffuse disk glow
+  const diskGrad = ctx.createRadialGradient(cx, cx, 0, cx, cx, S * 0.48)
+  diskGrad.addColorStop(0.00, 'rgba(255,250,200,0.00)')
+  diskGrad.addColorStop(0.06, 'rgba(255,240,140,0.65)')
+  diskGrad.addColorStop(0.18, 'rgba(255,200, 80,0.38)')
+  diskGrad.addColorStop(0.42, 'rgba(160,120, 40,0.16)')
+  diskGrad.addColorStop(0.75, 'rgba( 60, 40, 10,0.07)')
+  diskGrad.addColorStop(1.00, 'rgba(0,0,0,0)')
+  ctx.fillStyle = diskGrad; ctx.fillRect(0, 0, S, S)
+
+  // Galactic bar
+  ctx.save(); ctx.translate(cx, cx); ctx.rotate(44 * Math.PI / 180)
+  const barGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, S * 0.13)
+  barGrad.addColorStop(0.0, 'rgba(255,250,210,0.80)')
+  barGrad.addColorStop(0.4, 'rgba(255,220,120,0.45)')
+  barGrad.addColorStop(1.0, 'rgba(0,0,0,0)')
+  ctx.scale(1.0, 0.28); ctx.fillStyle = barGrad
+  ctx.fillRect(-S * 0.20, -S * 0.20, S * 0.40, S * 0.40)
+  ctx.restore()
+
+  // Four spiral arms — each with a distinct colour signature
+  const ARMS: [number, string, string, number, number][] = [
+    [0.00,          '80,160,255',  '100,200,255', 0.38, 32],  // Scutum-Centaurus — blue (OB-rich)
+    [Math.PI * 0.5, '255,200, 80', '255,240,140', 0.30, 28],  // Sagittarius — amber (older pops)
+    [Math.PI * 1.0, '220, 80,180', '255,140,220', 0.26, 26],  // Perseus — pink (HII regions)
+    [Math.PI * 1.5, '60, 200,160', '100,240,200', 0.20, 22],  // Norma-Outer — teal
+  ]
+  const PITCH = Math.tan(12 * Math.PI / 180)
+  const rngK  = (seed: number) => { let s = seed; return () => { s=s*1664525+1013904223|0; return (s>>>0)/4294967296 } }
+
+  for (const [startAngle, rgb, rgbBright, alpha, width] of ARMS) {
+    // Wide outer glow
+    ctx.beginPath()
+    let first = true
+    for (let t = 0; t < Math.PI * 2.9; t += 0.025) {
+      const r = S * 0.048 * Math.exp(t * PITCH); if (r > S * 0.49) break
+      const a = t + startAngle
+      const x = cx + r * Math.cos(a), y = cx + r * Math.sin(a)
+      first ? (ctx.moveTo(x, y), first = false) : ctx.lineTo(x, y)
+    }
+    ctx.strokeStyle = `rgba(${rgb},${(alpha * 0.55).toFixed(3)})`; ctx.lineWidth = width * 1.4; ctx.lineCap = 'round'; ctx.stroke()
+
+    // Bright core of arm
+    ctx.beginPath(); first = true
+    for (let t = 0.15; t < Math.PI * 2.7; t += 0.025) {
+      const r = S * 0.048 * Math.exp(t * PITCH); if (r > S * 0.47) break
+      const a = t + startAngle
+      const x = cx + r * Math.cos(a), y = cx + r * Math.sin(a)
+      first ? (ctx.moveTo(x, y), first = false) : ctx.lineTo(x, y)
+    }
+    ctx.strokeStyle = `rgba(${rgbBright},${alpha.toFixed(3)})`; ctx.lineWidth = width * 0.38; ctx.stroke()
+
+    // HII knots
+    const rk = rngK(Math.round(startAngle * 999 + 1))
+    for (let k = 0; k < 14; k++) {
+      const t2 = rk() * Math.PI * 2.2 + 0.3
+      const r2 = S * 0.048 * Math.exp(t2 * PITCH) * (0.80 + rk() * 0.40)
+      if (r2 > S * 0.48) continue
+      const kx = cx + r2 * Math.cos(t2 + startAngle + (rk() - 0.5) * 0.3)
+      const ky = cx + r2 * Math.sin(t2 + startAngle + (rk() - 0.5) * 0.3)
+      const ks = 5 + rk() * 18
+      const kg = ctx.createRadialGradient(kx, ky, 0, kx, ky, ks)
+      kg.addColorStop(0, `rgba(${rgbBright},${(alpha * 2.2).toFixed(2)})`); kg.addColorStop(1, 'rgba(0,0,0,0)')
+      ctx.fillStyle = kg; ctx.beginPath(); ctx.arc(kx, ky, ks, 0, Math.PI * 2); ctx.fill()
+    }
+  }
+
+  // Dust lanes between arms
+  ctx.globalCompositeOperation = 'multiply'
+  for (let arm = 0; arm < 4; arm++) {
+    const dAngle = (arm + 0.5) / 4 * Math.PI * 2
+    ctx.beginPath(); let first2 = true
+    for (let t = 0.4; t < Math.PI * 2.6; t += 0.035) {
+      const r = S * 0.055 * Math.exp(t * PITCH); if (r > S * 0.45) break
+      const x = cx + r * Math.cos(t + dAngle), y = cx + r * Math.sin(t + dAngle)
+      first2 ? (ctx.moveTo(x, y), first2 = false) : ctx.lineTo(x, y)
+    }
+    ctx.strokeStyle = 'rgba(20,8,0,0.60)'; ctx.lineWidth = 12; ctx.stroke()
+  }
+  ctx.globalCompositeOperation = 'source-over'
+
+  // Star dust points
+  const rngS = rngK(77777)
+  const SCOLS: [string, number][] = [['80,140,255',0.9],['180,200,255',0.7],['255,255,230',0.6],['255,220,140',0.5],['255,160,80',0.5],['220,100,80',0.4]]
+  for (let i = 0; i < 6000; i++) {
+    const arm2 = Math.floor(rngS() * 4), t3 = rngS() * Math.PI * 2.5
+    const r3 = S * 0.048 * Math.exp(t3 * PITCH) * (0.65 + rngS() * 0.70)
+    if (r3 > S * 0.49) continue
+    const spread3 = (rngS() - 0.5) * S * 0.15
+    const sx = cx + r3 * Math.cos(t3 + (arm2/4)*Math.PI*2 + (rngS()-0.5)*0.5) + spread3
+    const sy = cx + r3 * Math.sin(t3 + (arm2/4)*Math.PI*2 + (rngS()-0.5)*0.5) + spread3
+    const [scol, sopac] = SCOLS[Math.floor(rngS() * SCOLS.length)]!
+    ctx.fillStyle = `rgba(${scol},${(sopac * (0.3 + rngS() * 0.7)).toFixed(2)})`
+    ctx.beginPath(); ctx.arc(sx, sy, 0.4 + rngS() * 1.4, 0, Math.PI * 2); ctx.fill()
+  }
+
+  // Nuclear cluster + bulge
+  const nucGrad = ctx.createRadialGradient(cx, cx, 0, cx, cx, S * 0.022)
+  nucGrad.addColorStop(0, 'rgba(255,255,240,1.0)'); nucGrad.addColorStop(1, 'rgba(255,200,80,0)')
+  ctx.fillStyle = nucGrad; ctx.fillRect(0, 0, S, S)
+  const bulgeGrad = ctx.createRadialGradient(cx, cx, 0, cx, cx, S * 0.11)
+  bulgeGrad.addColorStop(0, 'rgba(255,248,200,0.80)')
+  bulgeGrad.addColorStop(0.4,'rgba(255,220,120,0.50)')
+  bulgeGrad.addColorStop(1,  'rgba(0,0,0,0)')
+  ctx.fillStyle = bulgeGrad; ctx.fillRect(0, 0, S, S)
+
+  const tex = new THREE.CanvasTexture(cv)
+  tex.generateMipmaps = false; tex.minFilter = THREE.LinearFilter
+  return tex
+}
+
+function buildGalacticBackground() {
+  const NGP_RA  = 192.85 * Math.PI / 180
+  const NGP_DEC =  27.13 * Math.PI / 180
+  const galNormal = new THREE.Vector3(
+    Math.cos(NGP_DEC) * Math.cos(NGP_RA),
+    Math.sin(NGP_DEC),
+    -Math.cos(NGP_DEC) * Math.sin(NGP_RA),
+  ).normalize()
+  // Rotate disk from XY plane (normal=Z) to galactic plane (normal=galNormal)
+  const diskQuat = new THREE.Quaternion().setFromUnitVectors(
+    new THREE.Vector3(0, 0, 1), galNormal,
+  )
+
+  const DISK_R = 580
+
+  // Canvas-texture disk
+  const diskMesh = new THREE.Mesh(
+    new THREE.CircleGeometry(DISK_R, 128),
+    new THREE.MeshBasicMaterial({
+      map: makeGalacticDiskTexture(), transparent: true, depthWrite: false,
+      blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+    }),
+  )
+  diskMesh.quaternion.copy(diskQuat)
+  scene.add(diskMesh)
+
+  // 3-D star particle field distributed in the galactic disk plane
+  const STAR_N  = 14000
+  const starPos: number[] = [], starCol: number[] = []
+  let   rngSt   = 55441
+  const rngNext = () => { rngSt = rngSt * 1664525 + 1013904223 | 0; return (rngSt >>> 0) / 4294967296 }
+  const PITCH   = Math.tan(12 * Math.PI / 180)
+
+  // Arm colour palette — matches disk texture arms
+  const ARM_COLS: [number, number, number][][] = [
+    [[0.31,0.63,1.00],[0.20,0.50,0.88]],   // blue arm
+    [[1.00,0.78,0.31],[1.00,0.94,0.55]],   // amber arm
+    [[0.86,0.31,0.71],[1.00,0.55,0.86]],   // pink arm
+    [[0.24,0.78,0.63],[0.39,0.94,0.78]],   // teal arm
+  ]
+
+  for (let i = 0; i < STAR_N; i++) {
+    const arm  = Math.floor(rngNext() * 4)
+    const t    = rngNext() * Math.PI * 2.8
+    const r    = DISK_R * 0.070 * Math.exp(t * PITCH) * (0.55 + rngNext() * 0.90)
+    if (r > DISK_R * 0.97) continue
+    const spreadX = (rngNext() - 0.5) * DISK_R * 0.20
+    const spreadY = (rngNext() - 0.5) * DISK_R * 0.20
+    const angle   = t + (arm / 4) * Math.PI * 2 + (rngNext() - 0.5) * 0.55
+    // Use XY plane to match the canvas texture (CircleGeometry lies in XY plane)
+    const lx  = r * Math.cos(angle) + spreadX
+    const ly  = r * Math.sin(angle) + spreadY
+    const lz  = (rngNext() - 0.5) * DISK_R * 0.055  // disk scale height (perpendicular)
+    const lv  = new THREE.Vector3(lx, ly, lz).applyQuaternion(diskQuat)
+    starPos.push(lv.x, lv.y, lv.z)
+
+    // Colour: arm tint blended with stellar type randomness
+    const [colA, colB] = ARM_COLS[arm]!
+    const blend = rngNext()
+    const br    = 0.25 + rngNext() * 0.75
+    starCol.push(
+      (colA[0]! * (1 - blend) + colB[0]! * blend) * br,
+      (colA[1]! * (1 - blend) + colB[1]! * blend) * br,
+      (colA[2]! * (1 - blend) + colB[2]! * blend) * br,
+    )
+  }
+
+  const starGeo = new THREE.BufferGeometry()
+  starGeo.setAttribute('position', new THREE.Float32BufferAttribute(starPos, 3))
+  starGeo.setAttribute('color',    new THREE.Float32BufferAttribute(starCol, 3))
+  scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({
+    size: 0.9, vertexColors: true, sizeAttenuation: true,
+    transparent: true, opacity: 0.65, depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  })))
+
+  // Halo glow
+  scene.add(Object.assign(new THREE.Mesh(
+    new THREE.SphereGeometry(DISK_R * 0.70, 10, 8),
+    new THREE.MeshBasicMaterial({ color: 0xffe090, transparent: true, opacity: 0.025, depthWrite: false, blending: THREE.AdditiveBlending }),
+  )))
 }
 
 // ── Galaxy view ───────────────────────────────────────────────────────────────
+// All confirmed star systems are rendered as a single THREE.Points object
+// (2 draw calls total: stars + pips) instead of ~10 000 individual sprites.
 
 function buildGalaxyView() {
-  for (const [, sys] of galaxyStore.systems) {
-    if (sys.ra == null || sys.dec == null) continue
+  // Pre-allocate for worst case — trim later via slice
+  const systems  = [...galaxyStore.systems.values()].filter(s => s.ra != null && s.dec != null)
+  const N        = systems.length
+  const starPos  = new Float32Array(N * 3)
+  const starCol  = new Float32Array(N * 3)
+  const starSize = new Float32Array(N)
 
-    const vizDist  = distToViz(sys.sy_dist)
-    const pos      = raDecToVec3(sys.ra, sys.dec, vizDist)
+  const pipPos:  number[] = []
+  const pipCol:  number[] = []
+  const pipSize: number[] = []
+
+  let si = 0   // star index into the flat arrays
+
+  for (const sys of systems) {
+    const seed     = hostnameToSeed(sys.hostname)
+    const vizDist  = distToViz(sys.sy_dist, seed)
+    const pos      = raDecToVec3(sys.ra!, sys.dec!, vizDist)
     const spectral = teffToSpectral(sys.st_teff)
     const pCount   = sys.planets.length
     const dist     = sys.sy_dist ?? 500
     const teff     = sys.st_teff ?? 5778
 
-    // ── Size from stellar luminosity ────────────────────────────────────────
-    // Main-sequence approximation: L ∝ T^4 (Stefan-Boltzmann for fixed radius).
-    // logLum: 0 = solar,  +4 = hot O supergiant (~10⁴ L☉),  -3 = faint M dwarf.
-    const lumEst = Math.pow(teff / 5778, 4)
-    const logLum = Math.log10(Math.max(0.0001, lumEst))
-    // Scene-unit diameter: M-dwarf → ~2.5, G-type → ~3.8, A-type → ~7, O-type → ~14
+    // ── Size from stellar luminosity ─────────────────────────────────────────
+    const lumEst   = Math.pow(teff / 5778, 4)
+    const logLum   = Math.log10(Math.max(0.0001, lumEst))
     const baseSize = Math.max(2.5, 3.8 + logLum * 2.6)
-
-    // Bonus: more planets = system has been surveyed deeply → slightly larger dot
     const richBoost = Math.min(2.2, pCount * 0.40)
-    // Nearby stars (< 40 pc) are visually prominent — modest extra size
     const nearBoost = dist < 20 ? 1.8 : dist < 40 ? 0.8 : dist < 100 ? 0.2 : 0
     const sizeUnits = baseSize + richBoost + nearBoost
 
-    // ── Apparent magnitude from luminosity + distance ───────────────────────
-    // m = M_abs + 5·log₁₀(d/10pc),  M_abs ≈ 4.83 - 2.5·logLum
-    const appMag = 4.83 - 2.5 * logLum + 5 * Math.log10(Math.max(10, dist) / 10)
-    // Map to 3 sprite tiers used by makeStarMesh
-    const magnitude = appMag < 1 ? 1 : appMag < 4.5 ? 3 : 7
+    // ── Color from spectral class ─────────────────────────────────────────────
+    const rgb = SPECTRAL_RGB[spectral] ?? [200, 200, 200] as [number, number, number]
+    let cr = rgb[0] / 255, cg = rgb[1] / 255, cb = rgb[2] / 255
 
-    const sprite  = makeStarMesh(spectral, magnitude, sizeUnits)
-    const baseOp  = (sprite.material as THREE.SpriteMaterial).opacity
-    sprite.position.copy(pos)
-    scene.add(sprite)
-    galaxyVisuals.push(sprite)
+    if (sys.sy_dist == null) {
+      // Unknown distance: desaturate + dim
+      const grey = (cr + cg + cb) / 3
+      cr = grey * 0.43; cg = grey * 0.43; cb = grey * 0.43
+    }
 
-    // ── System property detection ────────────────────────────────────────────
+    // Apparent magnitude → mild brightness boost for very bright stars
+    const appMag   = 4.83 - 2.5 * logLum + 5 * Math.log10(Math.max(10, dist) / 10)
+    const brightK  = appMag < 1 ? 1.4 : appMag < 4.5 ? 1.1 : 1.0
+    cr *= brightK; cg *= brightK; cb *= brightK
+
+    starPos[si * 3]     = pos.x
+    starPos[si * 3 + 1] = pos.y
+    starPos[si * 3 + 2] = pos.z
+    starCol[si * 3]     = cr
+    starCol[si * 3 + 1] = cg
+    starCol[si * 3 + 2] = cb
+    starSize[si]        = sizeUnits
+
+    // ── System property pips ─────────────────────────────────────────────────
     const hasHZ = sys.planets.some(p =>
       (p.pl_eqt != null && p.pl_eqt > 200 && p.pl_eqt < 380) ||
       (p.pl_orbsmax != null && p.pl_orbsmax > 0.7 && p.pl_orbsmax < 1.8)
     )
-    const moons = sys.sy_mnum ?? 0
-    const stars  = sys.sy_snum ?? 1
+    const stars = sys.sy_snum ?? 1
 
-    // ── HZ pip — replaces the full green ring ─────────────────────────────
-    // A tiny glowing green dot offset at ~2 o'clock from the star sprite.
-    // Same information density at 1/50th the visual weight.
     if (hasHZ) {
-      const pip = makeGlowPip(0x22ff88, Math.max(2.2, sizeUnits * 0.28))
-      pip.position.copy(pos)
-      pip.position.x += sizeUnits * 0.60    // 2 o'clock offset
-      pip.position.y += sizeUnits * 0.35
-      pip.userData = { type: 'hz_pip' }
-      scene.add(pip)
-      galaxyVisuals.push(pip)
+      pipPos.push(pos.x + sizeUnits * 0.60, pos.y + sizeUnits * 0.35, pos.z)
+      pipCol.push(0x22 / 255, 0xff / 255, 0x88 / 255)
+      pipSize.push(Math.max(2.2, sizeUnits * 0.28))
     }
-
-    // ── Rich system pip — 5+ planets get a blue dot at 10 o'clock ────────
     if (pCount >= 5) {
-      const pip = makeGlowPip(0x88bbff, Math.max(1.8, sizeUnits * 0.22))
-      pip.position.copy(pos)
-      pip.position.x -= sizeUnits * 0.60    // 10 o'clock offset
-      pip.position.y += sizeUnits * 0.35
-      pip.userData = { type: 'rich_pip' }
-      scene.add(pip)
-      galaxyVisuals.push(pip)
+      pipPos.push(pos.x - sizeUnits * 0.60, pos.y + sizeUnits * 0.35, pos.z)
+      pipCol.push(0x88 / 255, 0xbb / 255, 0xff / 255)
+      pipSize.push(Math.max(1.8, sizeUnits * 0.22))
     }
-
-    // ── Binary/multi-star pip — amber at 6 o'clock ────────────────────────
     if (stars >= 2) {
-      const pip = makeGlowPip(0xffd480, Math.max(1.8, sizeUnits * 0.22))
-      pip.position.copy(pos)
-      pip.position.y -= sizeUnits * 0.55    // 6 o'clock offset
-      pip.userData = { type: 'binary_pip' }
-      scene.add(pip)
-      galaxyVisuals.push(pip)
+      pipPos.push(pos.x, pos.y - sizeUnits * 0.55, pos.z)
+      pipCol.push(0xff / 255, 0xd4 / 255, 0x80 / 255)
+      pipSize.push(Math.max(1.8, sizeUnits * 0.22))
     }
 
-    // ── Invisible hit sphere ────────────────────────────────────────────────
-    const hitR  = Math.max(4.5, sizeUnits * 0.60)
-    const mesh  = new THREE.Mesh(
+    // ── Invisible hit sphere (raycasting only, never added to scene) ──────────
+    const hitR = Math.max(4.5, sizeUnits * 0.60)
+    const mesh = new THREE.Mesh(
       new THREE.SphereGeometry(hitR, 8, 8),
       new THREE.MeshBasicMaterial({ visible: false })
     )
@@ -815,7 +1123,7 @@ function buildGalaxyView() {
     mesh.userData = {
       type:   'star_system',
       system: sys,
-      sprite,
+      ptIdx:  si,   // index into Points buffer for highlight/filter
       hoverInfo: {
         name:    sys.hostname,
         type:    'Star System',
@@ -823,15 +1131,50 @@ function buildGalaxyView() {
           ?? (sys.st_teff ? `${spectral}-type  ${Math.round(teff)} K` : undefined),
         dist:    dist ? `${dist.toFixed(1)} pc` : undefined,
         planets: pCount,
-        moons,
+        moons:   sys.sy_mnum ?? 0,
         stars,
         hz:      hasHZ,
         settledCount: 0, artCount: 0, ecoOpsCount: 0,
       } as HoverInfo,
-      baseOpacity: baseOp,   // stored for filter restoration
     }
-    scene.add(mesh)
+    mesh.updateMatrixWorld(true)
     galaxyMarkers.push(mesh)
+    si++
+  }
+
+  // ── Build star Points ────────────────────────────────────────────────────────
+  const starColTrimmed  = starCol.slice(0, si * 3)
+  _starBaseColors       = starColTrimmed.slice()   // save original for filter restore
+  const starGeo = new THREE.BufferGeometry()
+  starGeo.setAttribute('position', new THREE.BufferAttribute(starPos.slice(0, si * 3), 3))
+  starGeo.setAttribute('aColor',   new THREE.BufferAttribute(starColTrimmed, 3))
+  starGeo.setAttribute('pSize',    new THREE.BufferAttribute(starSize.slice(0, si), 1))
+
+  const starMat = new THREE.ShaderMaterial({
+    vertexShader:   STAR_VERT,
+    fragmentShader: STAR_FRAG,
+    transparent:    true,
+    depthWrite:     false,
+    blending:       THREE.AdditiveBlending,
+  })
+  galaxyStarPoints = new THREE.Points(starGeo, starMat)
+  scene.add(galaxyStarPoints)
+
+  // ── Build pip Points ─────────────────────────────────────────────────────────
+  if (pipPos.length > 0) {
+    const pipGeo = new THREE.BufferGeometry()
+    pipGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pipPos), 3))
+    pipGeo.setAttribute('aColor',   new THREE.BufferAttribute(new Float32Array(pipCol), 3))
+    pipGeo.setAttribute('pSize',    new THREE.BufferAttribute(new Float32Array(pipSize), 1))
+    const pipMat = new THREE.ShaderMaterial({
+      vertexShader:   STAR_VERT,
+      fragmentShader: STAR_FRAG,
+      transparent:    true,
+      depthWrite:     false,
+      blending:       THREE.AdditiveBlending,
+    })
+    galaxyPipPoints = new THREE.Points(pipGeo, pipMat)
+    scene.add(galaxyPipPoints)
   }
 }
 
@@ -913,7 +1256,7 @@ function mulberry32(seed: number) {
 function buildCandidateView() {
   for (const p of galaxyStore.candidatePlanets) {
     if (p.ra == null || p.dec == null) continue
-    const vizDist = distToViz(p.sy_dist)
+    const vizDist = distToViz(p.sy_dist, hostnameToSeed(p.hostname))
     const pos     = raDecToVec3(p.ra, p.dec, vizDist)
 
     // Warm amber — visually distinct from confirmed (spectral) and frontier (blue-grey)
@@ -942,7 +1285,7 @@ function buildCandidateView() {
         note:    `⚠ CANDIDATE · ${p.source_catalog?.toUpperCase() ?? ''} ${p.source_id ?? ''}`,
       } as HoverInfo,
     }
-    scene.add(hitMesh)
+    hitMesh.updateMatrixWorld(true)
     candidateMarkers.push(hitMesh)
   }
 }
@@ -950,7 +1293,7 @@ function buildCandidateView() {
 function buildFrontierView() {
   for (const p of galaxyStore.frontierPlanets) {
     if (p.ra == null || p.dec == null) continue
-    const vizDist = distToViz(p.sy_dist)
+    const vizDist = distToViz(p.sy_dist, hostnameToSeed(p.hostname))
     const pos     = raDecToVec3(p.ra, p.dec, vizDist)
 
     // Pale blue-grey — dim, clearly distinct from confirmed
@@ -976,7 +1319,7 @@ function buildFrontierView() {
         note:    `◌ FRONTIER · ${p.mission_zone ? p.mission_zone.toUpperCase() + ' · ' : ''}HIP ${p.source_id ?? ''}`,
       } as HoverInfo,
     }
-    scene.add(hitMesh)
+    hitMesh.updateMatrixWorld(true)
     frontierMarkers.push(hitMesh)
   }
 }
@@ -1032,33 +1375,6 @@ function resolveStellarConfig(sys: import('src/stores/galaxy').StarSystem): Stel
   }
 }
 
-// ── Activity pip helper ───────────────────────────────────────────────────────
-// Creates a tiny notification-dot Sprite that replaces heavy ring geometry.
-// The radial gradient gives a soft glow; AdditiveBlending makes it space-accurate.
-
-function makeGlowPip(hexColor: number, size: number): THREE.Sprite {
-  const cv  = document.createElement('canvas')
-  cv.width  = cv.height = 32
-  const ctx = cv.getContext('2d')!
-  const col = '#' + new THREE.Color(hexColor).getHexString()
-  const grd = ctx.createRadialGradient(16, 16, 0, 16, 16, 16)
-  grd.addColorStop(0,   col)
-  grd.addColorStop(0.40, col)
-  grd.addColorStop(1,    'rgba(0,0,0,0)')
-  ctx.fillStyle = grd
-  ctx.fillRect(0, 0, 32, 32)
-  const mat = new THREE.SpriteMaterial({
-    map:         new THREE.CanvasTexture(cv),
-    transparent: true,
-    depthWrite:  false,
-    blending:    THREE.AdditiveBlending,
-    opacity:     0.78,
-  })
-  const sprite = new THREE.Sprite(mat)
-  sprite.scale.setScalar(size)
-  return sprite
-}
-
 // ── System view ───────────────────────────────────────────────────────────────
 
 // Deterministic orbital inclination per planet — adds visual depth without
@@ -1073,8 +1389,10 @@ function planetInclinationRad(hostname: string, idx: number): number {
 
 function enterSystemView(sys: StarSystem) {
   if (mode.value === 'system') exitSystemViewImmediate()
-  mode.value       = 'system'
+  mode.value          = 'system'
   currentSystem.value = sys
+  clickedNonConfirmed.value = null
+  void router.replace({ query: { focusHost: sys.hostname } })
 
   // Log for smart preset generation in MintStylePage
   logNavEvent('system_view', {
@@ -1088,13 +1406,14 @@ function enterSystemView(sys: StarSystem) {
     hasHZ:    isHZSystem(sys),
   })
 
-  // Hide galaxy markers and their visual sprites
+  // Hide galaxy Points during system view
+  if (galaxyStarPoints) galaxyStarPoints.visible = false
+  if (galaxyPipPoints)  galaxyPipPoints.visible  = false
   const marker = galaxyMarkers.find(m => m.userData.system.hostname === sys.hostname) ?? null
-  galaxyMarkers.forEach(m => { m.visible = m === marker })
-  galaxyVisuals.forEach(v => { v.visible = false })
 
   const starPos = marker ? marker.position.clone() : new THREE.Vector3(0, 0, 0)
   buildSystemScene(sys, starPos)
+  _stellarCfgCache = resolveStellarConfig(sys)
   moveCameraToSystem(starPos, sys.planets.length)
 }
 
@@ -1264,8 +1583,11 @@ function buildSystemScene(sys: StarSystem, starPos: THREE.Vector3) {
       lx.font      = 'bold 14px "Courier New", monospace'
       lx.fillStyle = '#aad4ff'
       lx.fillText(pl.pl_name, 5, 30)
+      const _lt = new THREE.CanvasTexture(lc)
+      _lt.generateMipmaps = false
+      _lt.minFilter       = THREE.LinearFilter
       const lbl = new THREE.Sprite(new THREE.SpriteMaterial({
-        map: new THREE.CanvasTexture(lc),
+        map: _lt,
         transparent: true, depthWrite: false, blending: THREE.NormalBlending,
       }))
       lbl.scale.set(16, 3.5, 1)
@@ -1410,10 +1732,11 @@ function exitSystemViewImmediate() {
   hasReturnPosition.value = false
   savedCamPos = null; savedTargetPos = null
   systemObjects.forEach(o => scene.remove(o))
-  systemObjects = []
-  animObjects   = []
-  galaxyMarkers.forEach(m => { m.visible = true })
-  galaxyVisuals.forEach(v => { v.visible = true })
+  systemObjects     = []
+  animObjects       = []
+  _stellarCfgCache  = null
+  if (galaxyStarPoints) galaxyStarPoints.visible = true
+  if (galaxyPipPoints)  galaxyPipPoints.visible  = true
   mode.value           = 'galaxy'
   currentSystem.value  = null
   selectedPlanet.value = null
@@ -1424,6 +1747,8 @@ function exitSystemViewImmediate() {
 
 function exitSystem() {
   exitSystemViewImmediate()
+  zoomStage.value = 0
+  void router.replace({ query: {} })
   gsap.to(camera.position, {
     duration: 1.4, x: 0, y: 0, z: 600,
     onUpdate: () => controls.update(),
@@ -1454,29 +1779,111 @@ function moveCameraToSystem(starPos: THREE.Vector3, planetCount: number) {
 
 // ── Planet focus mode ─────────────────────────────────────────────────────────
 
+function togglePlanetFollow(mode: 'orbit' | 'dkmat') {
+  // Toggle off if already in this mode
+  if (planetCamFollow.value && planetCamMode.value === mode) {
+    planetCamFollow.value = false
+    controls.enabled = true
+    return
+  }
+  planetCamMode.value   = mode
+  planetCamFollow.value = true
+  controls.enabled = false   // hand camera control to the follow system
+
+  if (mode === 'dkmat' && focusedPlanetMesh) {
+    // Dramatic DK.MAT ascent — GSAP the initial move then follow takes over
+    const S    = followStarPos.clone()
+    const up   = new THREE.Vector3(0, 1, 0)
+    const orbUp = new THREE.Vector3(
+      -Math.sin(followIncl),
+      Math.cos(followIncl),
+      0,
+    ).normalize()
+    const ascent = followOrbR * 2.8
+    gsap.to(camera.position, {
+      duration: 2.2, ease: 'power3.inOut',
+      x: S.x + orbUp.x * ascent,
+      y: S.y + ascent,
+      z: S.z + orbUp.z * ascent,
+      onUpdate: () => controls.update(),
+    })
+  }
+}
+
 function focusPlanet(pMesh: THREE.Mesh) {
   clearFocusMoons()
-  focusedPlanetMesh = pMesh
+  focusedPlanetMesh    = pMesh
   focusedPlanet.value  = pMesh.userData.planet as Planet
   selectedPlanet.value = pMesh.userData.planet as Planet
 
-  const p    = pMesh.position.clone()
-  const pR   = (pMesh.geometry as THREE.SphereGeometry).parameters?.radius ?? 2
-  const dist = Math.max(38, pR * 14)
+  // ── Store orbital parameters ───────────────────────────────────────────────
+  const d = pMesh.userData
+  followOrbR    = d.orbR    ?? 40
+  followIncl    = d.incl    ?? 0
+  followStarPos = d.starPos ? d.starPos.clone() : new THREE.Vector3()
 
-  // Arrive at a gentle elevated angle — looking slightly down onto the orbital plane
-  gsap.to(camera.position, {
-    duration: 2.0,
-    x: p.x + dist * 0.15,
-    y: p.y + dist * 0.45,
-    z: p.z + dist,
-    ease: 'power2.inOut',
+  const P    = pMesh.position.clone()
+  const S    = followStarPos
+  const pR   = (pMesh.geometry as THREE.SphereGeometry).parameters?.radius ?? 2
+  const θ    = d.orbAngle ?? 0
+  const incl = followIncl
+
+  // ── Compute the L4-companion camera landing position ──────────────────────
+  // The L4 point is 60° ahead in the orbit. Instead of sitting at L4 (which
+  // keeps the planet small at orbital distance), we position the camera close
+  // to the planet in a trailing Lagrangian-flavoured companion orbit:
+  //   −55% along orbital tangent (slightly behind the planet)
+  //   +40% along the orbit normal (above the orbital plane)
+  //   +12% radially outward (slight outward tilt = star stays in view)
+  const fromStar = P.clone().sub(S).normalize()   // star → planet
+  const tang     = new THREE.Vector3(
+    -Math.sin(θ),
+     Math.cos(θ) * Math.sin(incl),
+     Math.cos(θ) * Math.cos(incl),
+  ).normalize()
+  const orbNorm  = new THREE.Vector3().crossVectors(fromStar, tang).normalize()
+
+  const companionDist = Math.max(30, pR * 11)
+  const L4companion   = P.clone()
+    .addScaledVector(tang,    -companionDist * 0.55)
+    .addScaledVector(orbNorm,  companionDist * 0.40)
+    .addScaledVector(fromStar, companionDist * 0.12)
+
+  // Midpoint for the braking manoeuvre (halfway between current cam and target)
+  const midPt = camera.position.clone().lerp(L4companion, 0.50)
+  midPt.y    += companionDist * 0.20   // slight arc up then down
+
+  // ── Phase 1 (0–0.9 s): Rush toward the planet — power4.in accelerates hard ─
+  controls.enabled = false
+  planetCamFollow.value = false
+
+  gsap.to(controls.target, {
+    duration: 0.9, ease: 'power3.in',
+    x: P.x, y: P.y, z: P.z,
     onUpdate: () => controls.update(),
   })
-  gsap.to(controls.target, {
-    duration: 2.0,
-    x: p.x, y: p.y, z: p.z,
-    ease: 'power2.inOut', onUpdate: () => controls.update(),
+
+  gsap.to(camera.position, {
+    duration: 0.9, ease: 'power4.in',
+    x: midPt.x, y: midPt.y, z: midPt.z,
+    onUpdate: () => controls.update(),
+
+    // ── Phase 2 (0.9–2.8 s): Decelerate into L4 companion orbit ────────────
+    // The sharp power4.out easing creates the "spacecraft braking" sensation —
+    // the planet seems to grow quickly then suddenly slow as you settle into orbit.
+    onComplete: () => {
+      gsap.to(camera.position, {
+        duration: 1.9, ease: 'power4.out',
+        x: L4companion.x, y: L4companion.y, z: L4companion.z,
+        onUpdate: () => controls.update(),
+        onComplete: () => {
+          // Hand control to the spring-follow system; user is now in co-orbit
+          planetCamMode.value   = 'orbit'
+          planetCamFollow.value = true
+          // controls stay disabled — spring follow drives the camera
+        },
+      })
+    },
   })
 
   // Equatorial ring — colour-coded by rarity tier
@@ -1489,7 +1896,7 @@ function focusPlanet(pMesh: THREE.Mesh) {
       depthWrite: false, blending: THREE.AdditiveBlending,
     })
   )
-  eqTorus.position.copy(p)
+  eqTorus.position.copy(P)
   eqTorus.rotation.x = Math.PI / 2
   scene.add(eqTorus)
   focusMoonObjects.push(eqTorus)
@@ -1555,6 +1962,8 @@ function clearFocusMoons() {
 }
 
 function defocusPlanet() {
+  planetCamFollow.value = false
+  controls.enabled      = true
   clearFocusMoons()
   selectedPlanet.value = null
   if (!currentSystem.value) return
@@ -1565,17 +1974,11 @@ function defocusPlanet() {
 
 // ── Animation loop ────────────────────────────────────────────────────────────
 
-function startLoop() {
-  const tick = () => {
-    animId = requestAnimationFrame(tick)
-    controls.update()
-
-    if (mode.value === 'system' && currentSystem.value) {
-      const cfg = resolveStellarConfig(currentSystem.value)
-      if (cfg.innerBinary) {
-        const dtDays = (1 / 60) / 86400
-        binaryAngle = (binaryAngle + (360 / cfg.innerBinary.periodDays) * dtDays) % 360
-      }
+function galaxyTick(_t: number) {
+  {
+    if (mode.value === 'system' && _stellarCfgCache?.innerBinary) {
+      const dtDays = (1 / 60) / 86400
+      binaryAngle = (binaryAngle + (360 / _stellarCfgCache.innerBinary.periodDays) * dtDays) % 360
     }
 
     if (mode.value === 'system') {
@@ -1634,12 +2037,68 @@ function startLoop() {
         // Ring stays centred on planet, keeps its own rotation
         d.ring.position.copy(px)
       }
+
+      // ── Lagrangian planet-camera follow ─────────────────────────────
+      // Runs AFTER all planet positions are updated so P is current.
+      if (planetCamFollow.value && focusedPlanetMesh) {
+        const P  = _fs.P.copy(focusedPlanetMesh.position)
+        const S  = followStarPos
+        const pR = (focusedPlanetMesh.geometry as THREE.SphereGeometry).parameters?.radius ?? 2
+
+        // Radial direction: from star outward to planet
+        const fromStar = _fs.fromStar.copy(P).sub(S).normalize()
+
+        // Orbital tangent: derivative of position w.r.t. angle
+        const d      = focusedPlanetMesh.userData
+        const angle  = d.orbAngle ?? 0
+        const incl   = d.incl    ?? 0
+        _fs.tang.set(
+          -Math.sin(angle),
+          Math.cos(angle) * Math.sin(incl),
+          Math.cos(angle) * Math.cos(incl),
+        ).normalize()
+        const tang = _fs.tang
+
+        // Orbit normal (up out of orbital plane)
+        const orbNorm = _fs.orbNorm.crossVectors(fromStar, tang).normalize()
+
+        let camTarget: THREE.Vector3
+        let lookTarget: THREE.Vector3
+
+        if (planetCamMode.value === 'orbit') {
+          const dist = Math.max(35, pR * 11)
+          camTarget = _fs.camTgt.copy(P)
+            .addScaledVector(tang,     -dist * 0.55)
+            .addScaledVector(orbNorm,   dist * 0.40)
+            .addScaledVector(fromStar,  dist * 0.12)
+          lookTarget = _fs.lookTgt.copy(P)
+        } else {
+          const high = followOrbR * 2.8
+          camTarget = _fs.camTgt.copy(S)
+            .addScaledVector(orbNorm,  high)
+            .addScaledVector(fromStar, followOrbR * 0.40)
+          lookTarget = _fs.lookTgt.copy(S).lerp(P, 0.35)
+        }
+
+        // Spring-damped follow. The coefficient scales with distance to planet
+        // so the camera feels tighter (more responsive) at close range — the
+        // "perspective slows" effect: far out = lazy drift, close = crisp lock.
+        const distToPlanet = camera.position.distanceTo(P)
+        const pRad         = (focusedPlanetMesh!.geometry as THREE.SphereGeometry).parameters?.radius ?? 2
+        const closeness    = Math.max(0, Math.min(1, 1 - (distToPlanet - pRad * 8) / (pRad * 40)))
+        const lerpK        = planetCamMode.value === 'orbit'
+          ? 0.032 + closeness * 0.038   // 0.032 (far drift) → 0.070 (near crisp)
+          : 0.020                        // DK.MAT: very slow, majestic
+        camera.position.lerp(camTarget, lerpK)
+        controls.target.lerp(lookTarget, lerpK * 1.5)
+        controls.update()
+      }
     }
 
-    defenderNav.value?.redraw(buildDefenderData())
-    renderer.render(scene, camera)
+    if ((_navThrottle = (_navThrottle + 1) % 6) === 0) {
+      defenderNav.value?.redraw(buildDefenderData())
+    }
   }
-  tick()
 }
 
 // ── Interaction ───────────────────────────────────────────────────────────────
@@ -1652,9 +2111,10 @@ function getHitTargets(): THREE.Mesh[] {
 }
 
 function raycast(x: number, y: number) {
-  const el = canvas.value!
-  mouseNDC.x =  (x / el.clientWidth)  * 2 - 1
-  mouseNDC.y = -(y / el.clientHeight) * 2 + 1
+  if (!camera) return []
+  const w = window.innerWidth, h = window.innerHeight - 44
+  mouseNDC.x =  (x / w) * 2 - 1
+  mouseNDC.y = -((y - 44) / h) * 2 + 1
   raycaster.setFromCamera(mouseNDC, camera)
   return raycaster.intersectObjects(getHitTargets(), false)
 }
@@ -1670,7 +2130,7 @@ function makeHoverInfo(obj: THREE.Mesh): HoverInfo | null {
       name:    sys.hostname,
       type:    'Host Star',
       spec:    sys.st_spectype ?? undefined,
-      dist:    sys.sy_dist ? `${sys.sy_dist.toFixed(1)} pc` : undefined,
+      dist:    sys.sy_dist ? `${sys.sy_dist.toFixed(1)} pc` : '? pc — uncharted',
       planets: sys.planets.length,
     }
   }
@@ -1731,6 +2191,7 @@ function onHover(e: MouseEvent) {
     if (hoveredInfo.value !== null) {
       hoverTimer = setTimeout(() => { hoveredInfo.value = null; hoverTimer = null }, 2000)
     }
+    if (previewDwellTimer) { clearTimeout(previewDwellTimer); previewDwellTimer = null }
     return
   }
 
@@ -1739,26 +2200,76 @@ function onHover(e: MouseEvent) {
     if (hoveredInfo.value !== null) {
       hoverTimer = setTimeout(() => { hoveredInfo.value = null; hoverTimer = null }, 2000)
     }
+    if (previewDwellTimer) { clearTimeout(previewDwellTimer); previewDwellTimer = null }
     return
   }
 
   currentHovered = obj
   applyHighlight(obj)
   hoveredInfo.value = makeHoverInfo(obj)
+
+  // Dwell-to-preview: after 400 ms on a star_system, pin the side preview panel
+  if (obj.userData.type === 'star_system') {
+    const sys = obj.userData.system as StarSystem
+    cancelPreviewDismiss()
+    if (!previewSystem.value || previewSystem.value.hostname !== sys.hostname) {
+      if (previewDwellTimer) clearTimeout(previewDwellTimer)
+      previewDwellTimer = setTimeout(() => {
+        previewSystem.value = sys
+        previewDwellTimer   = null
+      }, 400)
+    }
+  } else {
+    if (previewDwellTimer) { clearTimeout(previewDwellTimer); previewDwellTimer = null }
+  }
 }
 
 function clearHover() {
   if (currentHovered) { restoreHighlight(currentHovered); currentHovered = null }
-  // Persist label 2 s after cursor leaves canvas entirely
+  // Persist cursor tooltip 2 s after leaving canvas
   if (hoveredInfo.value !== null) {
     if (hoverTimer !== null) clearTimeout(hoverTimer)
     hoverTimer = setTimeout(() => { hoveredInfo.value = null; hoverTimer = null }, 2000)
   }
+  // Cancel any pending dwell; start 4 s dismiss for the preview panel
+  if (previewDwellTimer) { clearTimeout(previewDwellTimer); previewDwellTimer = null }
+  if (previewSystem.value) startPreviewDismiss()
+}
+
+// ── Two-stage zoom helpers ────────────────────────────────────────────────────
+
+function startApproach(targetPos: THREE.Vector3, _sys: StarSystem) {
+  const camPos   = camera.position.clone()
+  const toTarget = targetPos.clone().sub(camPos)
+  const dist     = toTarget.length()
+
+  // Approach point: 55% of the way toward the star, slight upward arc
+  const approach = camPos.clone().addScaledVector(toTarget.normalize(), dist * 0.55)
+  approach.y    += dist * 0.06
+
+  gsap.to(camera.position, {
+    duration: 0.90, ease: 'power2.out',
+    x: approach.x, y: approach.y, z: approach.z,
+    onUpdate: () => controls.update(),
+  })
+  gsap.to(controls.target, {
+    duration: 0.90, ease: 'power2.out',
+    x: targetPos.x, y: targetPos.y, z: targetPos.z,
+    onUpdate: () => controls.update(),
+  })
+}
+
+/** Cancel any pending approach when clicking empty space */
+function cancelApproach() {
+  if (approachTimer) { clearTimeout(approachTimer); approachTimer = null }
+  approachSystem.value      = null
+  zoomStage.value           = 0
+  clickedNonConfirmed.value = null
 }
 
 function onClick(e: MouseEvent) {
   const hits = raycast(e.clientX, e.clientY)
-  if (!hits.length) return
+  if (!hits.length) { cancelApproach(); return }
 
   // Skip transparent overlay meshes (atm spheres, label sprites, pip dots)
   // so clicks always reach the underlying interactive planet or star
@@ -1767,8 +2278,31 @@ function onClick(e: MouseEvent) {
   const t   = obj.userData.type
 
   if (mode.value === 'galaxy' && t === 'star_system') {
+    const sys = obj.userData.system as StarSystem
     selectedPlanet.value = null
-    enterSystemView(obj.userData.system as StarSystem)
+
+    if (approachSystem.value?.hostname === sys.hostname) {
+      // ── Stage 2: already approaching this star — commit to system entry ───
+      if (approachTimer) { clearTimeout(approachTimer); approachTimer = null }
+      approachSystem.value = null
+      zoomStage.value      = 2
+      enterSystemView(sys)
+    } else {
+      // ── Stage 1: start approach — animate 55% toward the star ────────────
+      if (approachTimer) clearTimeout(approachTimer)
+      approachSystem.value = sys
+      zoomStage.value      = 1
+      startApproach(obj.position, sys)
+      // Auto-commit after 1.4 s if user doesn't click again
+      approachTimer = setTimeout(() => {
+        if (approachSystem.value?.hostname === sys.hostname) {
+          approachSystem.value = null
+          zoomStage.value      = 2
+          enterSystemView(sys)
+        }
+        approachTimer = null
+      }, 1400)
+    }
   } else if (mode.value === 'system' && t === 'star') {
     // Clicking star while in planet focus → return to system overview
     if (focusedPlanet.value) { defocusPlanet(); return }
@@ -1777,7 +2311,6 @@ function onClick(e: MouseEvent) {
     focusPlanet(obj as THREE.Mesh)
     return
   } else if (mode.value === 'galaxy' && t === 'theoretical_system') {
-    // Theoretical systems: just zoom in and show label; no catalog data to enter
     const p   = obj.position.clone()
     const dir = camera.position.clone().sub(p).normalize()
     gsap.to(camera.position, {
@@ -1788,8 +2321,18 @@ function onClick(e: MouseEvent) {
       duration: 1.2, x: p.x, y: p.y, z: p.z,
       onUpdate: () => controls.update(),
     })
+    clickedNonConfirmed.value = {
+      hostname:    obj.userData.zone_id ?? 'Unsurveyed Region',
+      typeLabel:   obj.userData.mission_zone
+        ? `Mission Zone · ${obj.userData.mission_zone.toUpperCase()}`
+        : 'Theoretical Region',
+      statusLabel: '◌ THEORETICAL',
+      dotColor:    '#334466',
+      badgeColor:  '#667799',
+      dist:        obj.userData.dist != null ? `${Math.round(obj.userData.dist as number)} pc` : undefined,
+      note:        obj.userData.label as string | undefined,
+    }
   } else if (mode.value === 'galaxy' && (t === 'candidate_system' || t === 'frontier_system')) {
-    // Show info via hoverInfo but no system entry
     const p   = obj.position.clone()
     const dir = camera.position.clone().sub(p).normalize()
     gsap.to(camera.position, {
@@ -1800,6 +2343,19 @@ function onClick(e: MouseEvent) {
       duration: 1.0, x: p.x, y: p.y, z: p.z,
       onUpdate: () => controls.update(),
     })
+    const pl = obj.userData.planet as { hostname?: string; st_spectype?: string; sy_dist?: number; source_catalog?: string; source_id?: string; mission_zone?: string }
+    clickedNonConfirmed.value = {
+      hostname:    pl?.hostname ?? 'Unknown System',
+      typeLabel:   t === 'candidate_system' ? 'Planet Candidate' : 'Frontier (Predicted)',
+      statusLabel: t === 'candidate_system' ? '⚠ CANDIDATE' : '◌ FRONTIER',
+      dotColor:    t === 'candidate_system' ? '#f0a030' : '#8899bb',
+      badgeColor:  t === 'candidate_system' ? '#c07820' : '#6688aa',
+      dist:        pl?.sy_dist != null ? `${pl.sy_dist.toFixed(1)} pc` : undefined,
+      spec:        pl?.st_spectype ?? undefined,
+      note:        t === 'candidate_system'
+        ? (pl?.source_catalog ? `${pl.source_catalog.toUpperCase()} · ${pl?.source_id ?? ''}` : undefined)
+        : (pl?.mission_zone ? `Mission zone: ${pl.mission_zone.toUpperCase()}` : undefined),
+    }
   }
 }
 
@@ -1828,37 +2384,47 @@ function enterPlanetSurface(pl: Planet) {
   enteringPlanet.value = true
   controls.enabled = false
 
-  // Find the planet mesh to zoom into
+  const srcColor = currentSystem.value
+    ? '#' + starColorFromTeff(currentSystem.value.st_teff).getHexString()
+    : undefined
+
+  const triggerPortal = () => portalStore.openPortal({
+    label:       pl.pl_name,
+    route:       `/surface/${encodeURIComponent(pl.hostname)}/${encodeURIComponent(pl.pl_name)}`,
+    hostname:    pl.hostname,
+    sourceColor: srcColor,
+  })
+
+  // Brief zoom toward the planet before portal fires
   const pMesh = systemObjects.find(
     o => (o as THREE.Mesh).isMesh && o.userData.type === 'planet' && o.userData.planet?.pl_name === pl.pl_name
   ) as THREE.Mesh | undefined
 
-  const onComplete = () => void router.push(`/surface/${encodeURIComponent(pl.hostname)}/${encodeURIComponent(pl.pl_name)}`)
-
   if (pMesh) {
     const p = pMesh.position.clone()
-    gsap.to(camera.position, {
-      duration: 2.0,
-      x: p.x, y: p.y, z: p.z + 1,
-      ease: 'power3.in',
-      onUpdate: () => controls.update(),
-      onComplete,
-    })
     gsap.to(controls.target, {
-      duration: 1.2, x: p.x, y: p.y, z: p.z,
+      duration: 0.8, x: p.x, y: p.y, z: p.z,
+      ease: 'power2.in', onUpdate: () => controls.update(),
+      onComplete: triggerPortal,
+    })
+    gsap.to(camera.position, {
+      duration: 0.8, x: p.x, y: p.y, z: p.z + 2,
       ease: 'power2.in', onUpdate: () => controls.update(),
     })
   } else {
-    onComplete()
+    triggerPortal()
   }
 }
 
 function applyHighlight(obj: THREE.Mesh) {
-  // Sprite-backed hit meshes: scale up the associated sprite
-  if (obj.userData.sprite) {
-    const sp = obj.userData.sprite as THREE.Sprite
-    obj.userData._savedSpriteScale = sp.scale.clone()
-    sp.scale.multiplyScalar(1.5)
+  if (obj.userData.type === 'star_system' && galaxyStarPoints) {
+    const i = obj.userData.ptIdx as number | undefined
+    if (i === undefined) return
+    const sAttr = galaxyStarPoints.geometry.attributes['pSize'] as THREE.BufferAttribute
+    const sArr  = sAttr.array as Float32Array
+    obj.userData._savedPSize = sArr[i]
+    sArr[i] = (sArr[i] ?? 4) * 1.6
+    sAttr.needsUpdate = true
     return
   }
   const mat = obj.material as THREE.MeshStandardMaterial
@@ -1870,10 +2436,14 @@ function applyHighlight(obj: THREE.Mesh) {
 }
 
 function restoreHighlight(obj: THREE.Mesh) {
-  if (obj.userData.sprite && obj.userData._savedSpriteScale) {
-    const sp = obj.userData.sprite as THREE.Sprite
-    sp.scale.copy(obj.userData._savedSpriteScale)
-    obj.userData._savedSpriteScale = undefined
+  if (obj.userData.type === 'star_system' && obj.userData._savedPSize !== undefined && galaxyStarPoints) {
+    const i = obj.userData.ptIdx as number | undefined
+    if (i !== undefined) {
+      const sAttr = galaxyStarPoints.geometry.attributes['pSize'] as THREE.BufferAttribute
+      ;(sAttr.array as Float32Array)[i] = obj.userData._savedPSize as number
+      obj.userData._savedPSize = undefined
+      sAttr.needsUpdate = true
+    }
     return
   }
   const mat = obj.material as THREE.MeshStandardMaterial
@@ -1890,11 +2460,7 @@ function planetColorHex(p: Planet): string {
 
 // ── Resize ────────────────────────────────────────────────────────────────────
 
-function onResize() {
-  camera.aspect = window.innerWidth / window.innerHeight
-  camera.updateProjectionMatrix()
-  renderer.setSize(window.innerWidth, window.innerHeight)
-}
+// onResize handled globally by MainLayout via viz.resize()
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -1922,7 +2488,7 @@ function buildDefenderData(): DefenderNavData {
   const vizR           = Math.max(0, camDelta.length())
   const cameraRadiusAU = Math.max(0, (Math.pow(10, Math.max(0, vizR - 14) * Math.log10(61) / 171) - 1) / 6)
 
-  const cfg = resolveStellarConfig(sys)
+  const cfg = _stellarCfgCache ?? resolveStellarConfig(sys)
   if (cfg.innerBinary) cfg.innerBinary.angle = binaryAngle
 
   const planets: PlanetStripEntry[] = []
@@ -1991,6 +2557,14 @@ function onDefenderPortalTo(dest: { label: string; route: string }) {
     ? '#' + starColorFromTeff(currentSystem.value.st_teff).getHexString()
     : undefined
   portalStore.openPortal({ ...dest, sourceColor: srcColor })
+}
+
+function onAscendRealm() {
+  // From system mode → exit to galaxy (cosmic) view
+  if (mode.value === 'system') {
+    exitSystem()
+  }
+  // In galaxy/cosmic mode the button is hidden, so this is a no-op fallback
 }
 
 // ── Context zoom — Earth ↔ current system ────────────────────────────────────
@@ -2102,6 +2676,23 @@ const pipLegend = [
 onMounted(async () => {
   await galaxyStore.loadData()
   initScene()
+  _stopTick = viz.addTick(galaxyTick)
+
+  // ── Apply cosmic approach vector so galaxy opens facing correct direction ──
+  try {
+    const raw = sessionStorage.getItem('exo_cosmic_approach')
+    if (raw) {
+      const a = JSON.parse(raw) as { dir_x: number; dir_y: number; dir_z: number }
+      sessionStorage.removeItem('exo_cosmic_approach')   // consume once
+      const d  = new THREE.Vector3(a.dir_x, a.dir_y, a.dir_z).normalize()
+      const D  = 550   // galaxy view initial distance
+      const el = D * 0.14
+      camera.position.set(-d.x * D, el, -d.z * D)
+      camera.lookAt(0, 0, 0)
+      controls.update()
+    }
+  } catch { /* no stored approach — use default */ }
+
   buildGalaxyView()
   buildTheoreticalSystems()
   loaded.value = true
@@ -2115,6 +2706,9 @@ onMounted(async () => {
     if (galaxyStore.isFrontierLoaded  && frontierMarkers.length  === 0) buildFrontierView()
   })
 
+  // Explore-menu "Planet Systems" shortcut — enable habitable-zone filter on arrival
+  if (route.query.hz === '1') filterHZ.value = true
+
   // Deep-link from cosmic view or surface view: auto-enter the specified system
   const focusHost    = route.query.focusHost    as string | undefined
   const contextView  = route.query.contextView  as string | undefined
@@ -2125,20 +2719,30 @@ onMounted(async () => {
       enterSystemView(sys)
       // If arriving from surface with contextView=true, auto-trigger context zoom
       if (contextView === 'true') {
-        setTimeout(() => onContextZoom(), 800)  // brief delay to let scene build
+        setTimeout(() => onContextZoom(), 350)  // allow Three.js to build system objects
       }
     }
   }
 })
 
 onUnmounted(() => {
-  cancelAnimationFrame(animId)
-  window.removeEventListener('resize', onResize)
-  window.removeEventListener('mousemove', onSelMouseMove)
-  renderer?.dispose()
-  controls?.dispose()
-  frontierMarkers  = []
-  candidateMarkers = []
+  _stopTick?.()
+  _stopTick = null
+
+  disposeScene(pageGroup)
+  scene?.remove(pageGroup)
+  if (scene) { scene.background = null; scene.fog = null }
+
+  galaxyMarkers      = []
+  theoreticalMarkers = []
+  frontierMarkers    = []
+  candidateMarkers   = []
+  animObjects        = []
+  focusMoonObjects   = []
+  galaxyStarPoints   = null
+  galaxyPipPoints    = null
+  focusedPlanetMesh  = null
+  contextLine        = null
 })
 </script>
 
@@ -2227,10 +2831,80 @@ onUnmounted(() => {
   white-space: normal;
   line-height: 1.45;
 }
+/* ── Two-stage zoom HUD badge ─────────────────────────────────── */
+
+.zoom-stage-badge {
+  position: fixed;
+  top: 46px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 14px 5px 10px;
+  background: rgba(0, 8, 22, 0.88);
+  border: 1px solid rgba(0, 200, 255, 0.28);
+  border-radius: 20px;
+  backdrop-filter: blur(8px);
+  z-index: 30;
+  font-family: 'Courier New', monospace;
+  pointer-events: none;
+}
+
+.zsb-stage {
+  font-size: 9px;
+  font-weight: 700;
+  color: rgba(0, 230, 255, 0.90);
+  background: rgba(0, 80, 130, 0.50);
+  border-radius: 10px;
+  padding: 1px 7px;
+  letter-spacing: 0.08em;
+}
+
+.zsb-label {
+  font-size: 9px;
+  color: rgba(140, 200, 235, 0.75);
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 340px;
+}
+
+.zoom-badge-enter-active { transition: opacity 0.20s ease, transform 0.20s ease; }
+.zoom-badge-leave-active  { transition: opacity 0.15s ease, transform 0.15s ease; }
+.zoom-badge-enter-from    { opacity: 0; transform: translateX(-50%) translateY(-6px); }
+.zoom-badge-leave-to      { opacity: 0; transform: translateX(-50%) translateY(-4px); }
+
 .hover-fade-enter-active,
 .hover-fade-leave-active { transition: opacity 0.15s ease; }
 .hover-fade-enter-from,
 .hover-fade-leave-to    { opacity: 0; }
+
+/* ── Stellar detail lens trigger ─────────────────────────────── */
+
+.stellar-lens-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 5px 8px;
+  margin: 4px 0 2px;
+  font-family: 'Courier New', monospace;
+  font-size: 8.5px;
+  letter-spacing: 0.10em;
+  color: rgba(0, 200, 240, 0.75);
+  background: rgba(0, 40, 80, 0.35);
+  border: 1px solid rgba(0, 160, 210, 0.28);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+.stellar-lens-btn:hover {
+  background: rgba(0, 70, 120, 0.55);
+  border-color: rgba(0, 220, 255, 0.50);
+}
+.slb-icon { font-size: 11px; }
 
 .system-panel {
   position: absolute;
@@ -2323,11 +2997,58 @@ onUnmounted(() => {
 
 .planet-fade-enter-active { animation: planetFadeIn 2.0s ease-in forwards; }
 
+/* ── Legend anchor + toggle ───────────────────────────────────── */
+.legend-anchor {
+  position: absolute;
+  bottom: 92px;
+  left: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.legend-toggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px 3px 6px;
+  background: rgba(0, 10, 25, 0.72);
+  border: 1px solid rgba(0, 130, 180, 0.22);
+  border-radius: 10px;
+  cursor: pointer;
+  user-select: none;
+  backdrop-filter: blur(6px);
+  transition: background 0.13s, border-color 0.13s;
+}
+.legend-toggle:hover {
+  background: rgba(0, 20, 45, 0.88);
+  border-color: rgba(0, 180, 220, 0.38);
+}
+.legend-toggle__icon {
+  font-size: 9px;
+  color: rgba(0, 190, 230, 0.55);
+}
+.legend-toggle__label {
+  font-family: 'Courier New', monospace;
+  font-size: 8px;
+  letter-spacing: 0.12em;
+  color: rgba(80, 150, 190, 0.70);
+}
+
 .legend-block {
-  background: rgba(0, 0, 0, 0.68);
+  background: rgba(0, 0, 0, 0.72);
+  border: 1px solid rgba(0, 100, 150, 0.18);
   border-radius: 5px;
   font-family: monospace;
+  backdrop-filter: blur(6px);
 }
+
+/* Slide-up transition for the legend panel */
+.legend-slide-enter-active { transition: opacity 0.18s ease, transform 0.18s ease; }
+.legend-slide-leave-active  { transition: opacity 0.14s ease, transform 0.14s ease; }
+.legend-slide-enter-from    { opacity: 0; transform: translateY(6px); }
+.legend-slide-leave-to      { opacity: 0; transform: translateY(4px); }
 .legend-row {
   display: flex;
   align-items: center;
@@ -2461,150 +3182,6 @@ onUnmounted(() => {
   box-shadow: 0 0 5px currentColor;
 }
 
-/* ── Crosshair cursor in group-select mode ────────────────────── */
-
-.canvas--group-select { cursor: crosshair !important; }
-
-/* ── Drag-selection rectangle ─────────────────────────────────── */
-
-.sel-rect {
-  position: fixed;
-  pointer-events: none;
-  z-index: 9;
-  border: 1px dashed rgba(255, 165, 0, 0.75);
-  background: rgba(255, 140, 0, 0.055);
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
-}
-
-/* ── Group stats panel ─────────────────────────────────────────── */
-
-.group-panel {
-  position: fixed;
-  top: 58px;
-  right: 14px;
-  z-index: 8;
-  width: 270px;
-  background: rgba(1, 6, 20, 0.96);
-  border: 1px solid rgba(255, 160, 30, 0.35);
-  border-radius: 7px;
-  font-family: 'Courier New', monospace;
-  backdrop-filter: blur(10px);
-  overflow: hidden;
-}
-
-.gp-head {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 8px 10px;
-  background: rgba(255, 120, 0, 0.10);
-  border-bottom: 1px solid rgba(255, 160, 30, 0.20);
-}
-
-.gp-icon  { font-size: 11px; color: rgba(255, 160, 40, 0.80); }
-.gp-count {
-  flex: 1;
-  font-size: 8px;
-  letter-spacing: 0.12em;
-  color: rgba(255, 180, 80, 0.85);
-}
-
-.gp-close {
-  background: none; border: none;
-  color: rgba(180, 120, 60, 0.55);
-  font-size: 10px; cursor: pointer; padding: 0 2px;
-  transition: color 0.1s;
-}
-.gp-close:hover { color: rgba(255, 160, 40, 0.85); }
-
-.gp-stats {
-  padding: 8px 10px 6px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.gp-row {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  flex-wrap: wrap;
-}
-
-.gp-stat {
-  font-size: 9px;
-  color: rgba(160, 210, 235, 0.80);
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-}
-
-.gp-stat--hz { color: rgba(60, 220, 120, 0.85); }
-
-.gp-stat-icon {
-  font-size: 9px;
-  color: rgba(255, 200, 80, 0.65);
-}
-
-.gp-sep {
-  font-size: 9px;
-  color: rgba(80, 110, 140, 0.35);
-}
-
-.gp-spec-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin-top: 2px;
-}
-
-.gp-spec-chip {
-  font-size: 7.5px;
-  letter-spacing: 0.05em;
-  padding: 1px 5px;
-  border-radius: 2px;
-  background: rgba(0, 20, 50, 0.55);
-  border: 1px solid rgba(255,255,255,0.08);
-}
-
-.gp-actions {
-  display: flex;
-  gap: 5px;
-  padding: 6px 10px 8px;
-  border-top: 1px solid rgba(255, 160, 30, 0.15);
-}
-
-.gp-btn {
-  flex: 1;
-  font-family: 'Courier New', monospace;
-  font-size: 8px;
-  letter-spacing: 0.08em;
-  padding: 5px 8px;
-  border-radius: 3px;
-  border: 1px solid rgba(255, 160, 30, 0.28);
-  background: rgba(0, 10, 25, 0.70);
-  color: rgba(200, 170, 100, 0.75);
-  cursor: pointer;
-  transition: all 0.12s;
-}
-
-.gp-btn:hover {
-  background: rgba(40, 25, 0, 0.80);
-  border-color: rgba(255, 160, 30, 0.55);
-  color: rgba(255, 190, 80, 0.90);
-}
-
-.gp-btn--primary {
-  border-color: rgba(0, 200, 240, 0.35);
-  color: rgba(0, 200, 240, 0.75);
-}
-
-.gp-btn--primary:hover {
-  background: rgba(0, 40, 80, 0.80);
-  border-color: rgba(0, 229, 255, 0.55);
-  color: #00e5ff;
-}
-
 /* ── System-mode controls — bottom-right, ABOVE the NavigatorInset ──
    NavigatorInset: bottom 142 px, height ~190 px → top edge ~332 px.
    Buttons sit at bottom: 340 px so there is a clear gap above the inset.
@@ -2659,6 +3236,52 @@ onUnmounted(() => {
 
 .sys-btn--disabled { opacity: 0.32; cursor: not-allowed; }
 
+/* ── Planet data sheet accordion ──────────────────────────── */
+
+.planet-card-accordion {
+  display: flex; align-items: center; width: 100%;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(60,100,130,0.22);
+  border-radius: 4px; padding: 4px 8px; cursor: pointer;
+  color: #5588aa; font-size: 10px; gap: 5px;
+  transition: background 0.15s; margin-bottom: 4px;
+  font-family: 'Courier New', monospace; letter-spacing: 0.04em;
+}
+.planet-card-accordion:hover { background: rgba(255,255,255,0.07); color: #77aacc; }
+.pca-arrow { font-size: 9px; }
+.pca-label { flex: 1; text-align: left; letter-spacing: 0.10em; }
+.pca-hint  { color: rgba(60,90,115,0.65); font-size: 9px; }
+
+.planet-card-stats { overflow: hidden; padding-top: 4px; }
+
+.pca-slide-enter-active,
+.pca-slide-leave-active {
+  transition: opacity 0.18s ease, max-height 0.22s ease;
+  max-height: 600px;
+}
+.pca-slide-enter-from,
+.pca-slide-leave-to { opacity: 0; max-height: 0; }
+
+/* Planet follow + DK.MAT buttons */
+.sys-btn--active {
+  border-color: rgba(0, 230, 255, 0.60) !important;
+  background:   rgba(0, 80, 120, 0.55) !important;
+  color:        rgba(0, 240, 255, 0.95) !important;
+  box-shadow:   0 0 10px rgba(0, 200, 255, 0.25);
+}
+
+.sys-btn--dkmat { border-color: rgba(160, 80, 255, 0.35); }
+.sys-btn--dkmat:hover:not(.sys-btn--disabled) {
+  border-color: rgba(180, 100, 255, 0.60);
+  color: rgba(200, 140, 255, 0.90);
+}
+.sys-btn--dkmat.sys-btn--active {
+  border-color: rgba(180, 100, 255, 0.65) !important;
+  background:   rgba(60, 0, 120, 0.55) !important;
+  color:        rgba(210, 150, 255, 0.95) !important;
+  box-shadow:   0 0 14px rgba(160, 80, 255, 0.35);
+}
+
 .sys-icon {
   font-size: 15px;
   flex-shrink: 0;
@@ -2681,5 +3304,169 @@ onUnmounted(() => {
 .sys-btn:hover:not(.sys-btn--disabled) .sys-label {
   opacity: 1;
   transform: translateX(0);
+}
+
+/* ── Persistent system preview panel ─────────────────────────────── */
+
+.sys-preview {
+  position: fixed;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 256px;
+  background: rgba(1, 6, 22, 0.96);
+  border: 1px solid rgba(0, 180, 220, 0.28);
+  border-radius: 8px;
+  padding: 12px 14px 12px;
+  z-index: 50;
+  backdrop-filter: blur(14px);
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.7), 0 0 20px rgba(0, 160, 200, 0.06);
+  pointer-events: all;
+}
+
+.ncs-preview {
+  border-color: rgba(180, 140, 60, 0.25);
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.7), 0 0 20px rgba(180, 130, 40, 0.06);
+}
+
+.sp-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.sp-star-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-top: 3px;
+  flex-shrink: 0;
+  box-shadow: 0 0 6px currentColor;
+}
+
+.sp-title { flex: 1; min-width: 0; }
+
+.sp-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(210, 235, 255, 0.92);
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sp-spec {
+  font-family: 'Courier New', monospace;
+  font-size: 9px;
+  color: rgba(80, 150, 190, 0.70);
+  letter-spacing: 0.04em;
+  margin-top: 1px;
+}
+
+.sp-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.sp-badge {
+  font-family: 'Courier New', monospace;
+  font-size: 9px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  border: 1px solid;
+  white-space: nowrap;
+}
+.sp-badge--planets { color: rgba(160, 210, 255, 0.82); border-color: rgba(80, 140, 200, 0.32); background: rgba(0, 50, 110, 0.22); }
+.sp-badge--moons   { color: rgba(140, 190, 240, 0.70); border-color: rgba(60, 110, 170, 0.26); background: rgba(0, 35, 90, 0.18); }
+.sp-badge--binary  { color: rgba(255, 210, 120, 0.80); border-color: rgba(200, 160, 50, 0.36); background: rgba(70, 45, 0, 0.22); }
+.sp-badge--hz      { color: rgba(80, 225, 130, 0.90);  border-color: rgba(60, 200, 100, 0.42); background: rgba(0, 70, 35, 0.26); }
+
+.sp-sep {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.05);
+  margin: 6px 0 8px;
+}
+
+.sp-planet-list { margin-bottom: 6px; }
+
+.sp-planet {
+  display: flex;
+  align-items: center;
+  padding: 3px 0;
+  gap: 6px;
+  font-size: 11px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.sp-planet-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.sp-planet-name {
+  flex: 1;
+  color: rgba(180, 210, 235, 0.80);
+  font-family: monospace;
+  font-size: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sp-planet-stat {
+  font-family: 'Courier New', monospace;
+  font-size: 9px;
+  color: rgba(80, 130, 160, 0.65);
+  white-space: nowrap;
+}
+
+.sp-more {
+  font-size: 9px;
+  color: rgba(80, 120, 150, 0.55);
+  padding: 3px 0;
+  text-align: right;
+  font-family: 'Courier New', monospace;
+}
+
+.sp-activity {
+  display: flex;
+  gap: 6px;
+  margin: 6px 0 8px;
+}
+
+.sp-act-badge {
+  font-family: 'Courier New', monospace;
+  font-size: 9px;
+  color: rgba(80, 120, 150, 0.55);
+  padding: 2px 6px;
+  border: 1px solid rgba(80, 120, 150, 0.18);
+  border-radius: 3px;
+}
+
+.sp-enter {
+  font-size: 11px;
+  letter-spacing: 0.05em;
+}
+
+/* Preview panel slide-in from the right */
+.preview-slide-enter-active {
+  transition: opacity 0.22s ease, transform 0.22s cubic-bezier(0.2, 0, 0.3, 1);
+}
+.preview-slide-leave-active {
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+.preview-slide-enter-from {
+  opacity: 0;
+  transform: translateY(-50%) translateX(24px);
+}
+.preview-slide-leave-to {
+  opacity: 0;
+  transform: translateY(-50%) translateX(12px);
 }
 </style>

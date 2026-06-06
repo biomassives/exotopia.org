@@ -16,23 +16,29 @@
 
     <canvas v-else ref="canvas" class="three-canvas" @click="onCanvasClick" />
 
-    <!-- ── Cluster label overlay ────────────────────────────────────── -->
-    <div class="labels-layer" aria-hidden="true">
+    <!-- ── Cluster label overlay — clickable, navigate to cosmic view ── -->
+    <div class="labels-layer">
       <div
         v-for="lbl in clusterLabels"
         :key="lbl.name"
         v-show="lbl.visible"
-        class="cluster-label"
+        class="cluster-label cluster-label--clickable"
         :style="{
           left:    lbl.x + 'px',
           top:     lbl.y + 'px',
           opacity: lbl.opacity,
           '--sc-color': lbl.scColor,
         }"
+        role="button"
+        :aria-label="`Navigate to ${lbl.name}`"
+        tabindex="0"
+        @click.stop="goToCluster(lbl.name)"
+        @keyup.enter="goToCluster(lbl.name)"
       >
         <div class="cl-name">{{ lbl.name }}</div>
         <div v-if="lbl.supercluster" class="cl-super">{{ lbl.supercluster }}</div>
         <div class="cl-dist">{{ lbl.distMpc }} Mpc</div>
+        <div class="cl-enter">→ enter field</div>
         <div class="cl-tick" />
       </div>
     </div>
@@ -51,6 +57,18 @@
       <q-btn flat dense size="xs" color="blue-grey-5" icon="scatter_plot"        label="Galaxy"  @click="$router.push('/galaxy')" />
       <q-btn flat dense size="xs" color="blue-grey-5" icon="mdi-web"             label="Cosmic"  @click="$router.push('/cosmic')" />
       <q-btn flat dense size="xs" color="cyan-7"      icon="mdi-hexagon-outline" label="Transit" @click="transitOpen = true" />
+    </div>
+
+    <!-- ── "New here?" Get Started button ────────────────────────────── -->
+    <div class="ob-entry-btn-wrap">
+      <q-btn
+        unelevated rounded
+        color="cyan-9"
+        icon="mdi-rocket-launch"
+        label="New here? Get Started"
+        @click="$router.push('/onboard')"
+        class="ob-entry-btn"
+      />
     </div>
 
     <!-- ── Settlement mini panel (bottom-right, collapsible) ───────── -->
@@ -158,6 +176,7 @@
       @viewModeChange="m => { viewMode = m }"
       @eventFinderOpen="() => {}"
     />
+
   </q-page>
 </template>
 
@@ -355,35 +374,99 @@ function initiateTransit(dest: TransitDest) {
   portalStore.openPortal({ label: dest.label, route: dest.route })
 }
 
-function onCanvasClick() { if (panelOpen.value) panelOpen.value = false }
+/** Navigate to cosmic view centred on a named cluster, or galaxy view for the MW */
+function goToCluster(name: string) {
+  if (name === 'milky-way') { router.push('/galaxy'); return }
+  router.push({ path: '/cosmic', query: { focus: name } })
+}
+
+function onCanvasClick(e: MouseEvent) {
+  if (panelOpen.value) { panelOpen.value = false; return }
+
+  // Raycast the welcome-page scene for cluster sphere hits
+  if (!canvas.value) return
+  const el   = canvas.value
+  const ndcX =  (e.clientX / el.clientWidth)  * 2 - 1
+  const ndcY = -(e.clientY / el.clientHeight) * 2 + 1
+  raycaster.setFromCamera({ x: ndcX, y: ndcY }, camera)
+
+  const hits = raycaster.intersectObjects(hitMeshes, false)
+  if (hits.length) {
+    const name = hits[0].object.userData.clusterName as string | undefined
+    if (name) { goToCluster(name); return }
+  }
+}
 
 function onDefenderFlyTo(target: DefenderTarget) {
   if (target.type === 'cluster') router.push('/cosmic')
 }
 
-// ── GLSL — void Fresnel meniscus ──────────────────────────────────────────────
+// ── GLSL — void iridescent shimmer membrane ───────────────────────────────────
 
 const VOID_VERT = /* glsl */`
   varying vec3 vNormal;
   varying vec3 vViewDir;
+  varying vec3 vObjPos;
   void main() {
-    vNormal  = normalize(normalMatrix * normal);
-    vec4 mv  = modelViewMatrix * vec4(position, 1.0);
-    vViewDir = normalize(-mv.xyz);
+    vNormal   = normalize(normalMatrix * normal);
+    vObjPos   = position;
+    vec4 mv   = modelViewMatrix * vec4(position, 1.0);
+    vViewDir  = normalize(-mv.xyz);
     gl_Position = projectionMatrix * mv;
   }
 `
+
 const VOID_FRAG = /* glsl */`
   uniform float uTime;
-  uniform vec3  uColor;
+  uniform vec3  uColor;    /* primary hue */
+  uniform vec3  uColor2;   /* complementary hue */
   varying vec3  vNormal;
   varying vec3  vViewDir;
+  varying vec3  vObjPos;
+
   void main() {
-    float rim   = 1.0 - abs(dot(vNormal, vViewDir));
-    rim         = pow(rim, 2.0);
-    float wave  = sin(vNormal.x * 8.4 + uTime * 0.8)
-                * sin(vNormal.z * 7.1 + uTime * 1.1) * 0.14 + 0.86;
-    gl_FragColor = vec4(uColor, rim * wave * 0.82);
+    /* Fresnel rim — sharper inner / softer outer */
+    float cosA = abs(dot(vNormal, vViewDir));
+    float rim  = pow(1.0 - cosA, 1.7);
+    float rimS = pow(1.0 - cosA, 4.2);   /* sharp inner sparkle rim */
+
+    /* Slow-flowing colour bands across the surface */
+    float band1 = sin(vObjPos.x * 2.1 + vObjPos.y * 1.6 + uTime * 0.32) * 0.5 + 0.5;
+    float band2 = sin(vObjPos.y * 2.4 + vObjPos.z * 1.8 - uTime * 0.26) * 0.5 + 0.5;
+    float cmix  = band1 * band2;
+
+    /* Iridescence — hue shifts with viewing angle */
+    float iri   = pow(rim, 0.6) * 0.38;
+
+    /* High-freq sparkle points */
+    float sp = sin(vObjPos.x * 24.0 + uTime * 3.3)
+             * sin(vObjPos.z * 19.0 + uTime * 2.7) * 0.5 + 0.5;
+    sp = pow(sp, 4.5) * 0.6;
+
+    /* Mid-freq shimmer modulation */
+    float shim = sin(vObjPos.x * 8.4 + uTime * 0.9)
+               * sin(vObjPos.z * 7.1 + uTime * 1.2) * 0.16 + 0.84;
+
+    /* Tertiary rolling shimmer */
+    float roll = sin(vObjPos.y * 5.5 + vObjPos.x * 3.3 + uTime * 0.55) * 0.10 + 0.90;
+
+    /* Colour blend */
+    vec3 col = mix(uColor, uColor2, clamp(cmix + iri, 0.0, 1.0));
+
+    /* White-hot inner rim boost */
+    col = mix(col, col * 1.55 + 0.28, rimS * 0.45);
+
+    /* Additive sparkle flare */
+    col += vec3(sp * rim * 0.9);
+
+    /* Saturate warmth: slight push toward luminous whites on peak */
+    col = clamp(col, 0.0, 1.2);
+
+    float alpha = rim * shim * roll * 0.72
+                + rimS * 0.22
+                + sp * rim * 0.38;
+
+    gl_FragColor = vec4(col, clamp(alpha, 0.0, 0.94));
   }
 `
 
@@ -466,6 +549,8 @@ let scene:     THREE.Scene
 let camera:    THREE.PerspectiveCamera
 let controls:  OrbitControls
 let animId:    number
+let raycaster  = new THREE.Raycaster()
+let hitMeshes: THREE.Mesh[] = []   // invisible click targets for clusters
 
 interface SNovaGroup { meshes: THREE.Object3D[]; epochMyr: number; lifespanMyr: number }
 
@@ -473,7 +558,11 @@ let accretionDisks: THREE.Mesh[]   = []
 let quasarJets:     THREE.Mesh[]   = []
 let novaShells:     { mesh: THREE.Mesh; phase: number }[] = []
 let snovaGroups:    SNovaGroup[]   = []
-let voidUniforms:   { uTime: { value: number } }[] = []
+let voidUniforms:   { uTime: { value: number }; uColor: { value: THREE.Color }; uColor2: { value: THREE.Color } }[] = []
+let voidEdgeMats:   { mat: THREE.LineBasicMaterial; phase: number }[] = []
+let voidGlowMats:   { mat: THREE.LineBasicMaterial; phase: number }[] = []
+let laniakeaObjs:   THREE.Object3D[] = []
+let laniakeaFlowMat: THREE.LineBasicMaterial | undefined
 let bhClusterOrbs:  { mesh: THREE.Mesh; angle: number; r: number; speed: number }[] = []
 
 // ── Scene builders ────────────────────────────────────────────────────────────
@@ -497,14 +586,17 @@ function buildBackground() {
   })))
 }
 
-// Void polygon colour palette (hue, saturation, lightness)
-const VOID_PALETTE: [number, number, number][] = [
-  [0.50, 0.88, 0.68],  // cyan-teal
-  [0.62, 0.72, 0.62],  // indigo-blue
-  [0.17, 0.78, 0.66],  // green-teal
-  [0.75, 0.65, 0.60],  // violet
-  [0.10, 0.82, 0.65],  // amber-teal
-  [0.45, 0.80, 0.65],  // aqua
+// Complementary colour pairs for void iridescence: [primary HSL, complement HSL]
+// Each pair creates a shimmery shift between two hues as the surface moves
+const VOID_PAIRS: [[number,number,number],[number,number,number]][] = [
+  [[0.50, 0.98, 0.74], [0.84, 0.92, 0.70]],  // electric cyan  ↔  violet-rose
+  [[0.62, 0.92, 0.68], [0.11, 0.96, 0.74]],  // deep indigo    ↔  amber-gold
+  [[0.16, 0.95, 0.72], [0.56, 0.88, 0.70]],  // spring green   ↔  cornflower
+  [[0.76, 0.85, 0.72], [0.26, 0.90, 0.74]],  // orchid violet  ↔  lime-chartreuse
+  [[0.08, 0.96, 0.74], [0.58, 0.90, 0.70]],  // solar orange   ↔  azure
+  [[0.44, 0.94, 0.74], [0.94, 0.90, 0.70]],  // aquamarine     ↔  crimson-rose
+  [[0.70, 0.88, 0.70], [0.20, 0.92, 0.74]],  // blue-lavender  ↔  warm yellow
+  [[0.30, 0.90, 0.72], [0.80, 0.88, 0.70]],  // sea-green      ↔  deep purple
 ]
 
 function buildVoids() {
@@ -518,62 +610,97 @@ function buildVoids() {
     // Seeded non-uniform scale — makes each void a unique irregular polyhedron
     const seed = v.name.split('').reduce((a, c) => a * 31 + c.charCodeAt(0), 7)
     const rng  = mulberry32(seed)
-    const sx   = 0.76 + rng() * 0.48   // 0.76 – 1.24
-    const sy   = 0.62 + rng() * 0.56   // 0.62 – 1.18
-    const sz   = 0.78 + rng() * 0.44   // 0.78 – 1.22
+    const sx   = 0.76 + rng() * 0.48
+    const sy   = 0.62 + rng() * 0.56
+    const sz   = 0.78 + rng() * 0.44
 
-    // Choose polygon type for visual variety
     const polyIdx = Math.floor(rng() * 3)
     let polyGeo: THREE.BufferGeometry
     if (polyIdx === 0) {
-      polyGeo = new THREE.IcosahedronGeometry(r, r > 3 ? 1 : 0)    // 20 or 80 tris
+      polyGeo = new THREE.IcosahedronGeometry(r, r > 3 ? 1 : 0)
     } else if (polyIdx === 1) {
-      polyGeo = new THREE.OctahedronGeometry(r, 0)                  // 8 tris — very angular
+      polyGeo = new THREE.OctahedronGeometry(r, 0)
     } else {
-      polyGeo = new THREE.DodecahedronGeometry(r, 0)                // 36 tris — pentagonal
+      polyGeo = new THREE.DodecahedronGeometry(r, 0)
     }
-
-    // Apply asymmetric deformation
     polyGeo.scale(sx, sy, sz)
 
-    const [h, s, l] = VOID_PALETTE[i % VOID_PALETTE.length]!
-    const faceColor = new THREE.Color().setHSL(h, s, l)
-    const lineColor = new THREE.Color().setHSL(h, s, Math.min(1, l + 0.22))
+    // Complementary colour pair for this void
+    const [hslA, hslB] = VOID_PAIRS[i % VOID_PAIRS.length]!
+    const colA = new THREE.Color().setHSL(...hslA)
+    const colB = new THREE.Color().setHSL(...hslB)
 
-    // ── Translucent polygon faces ─────────────────────────────────────────────
-    const faceMesh = new THREE.Mesh(polyGeo, new THREE.MeshBasicMaterial({
-      color: faceColor, transparent: true, opacity: 0.025,
-      side: THREE.DoubleSide, depthWrite: false,
+    // Edge bright line (slightly lighter primary)
+    const edgeColA = new THREE.Color().setHSL(hslA[0], hslA[1], Math.min(1, hslA[2] + 0.18))
+    // Edge glow line (complement, additive)
+    const edgeColB = new THREE.Color().setHSL(hslB[0], hslB[1], Math.min(1, hslB[2] + 0.12))
+
+    // ── Translucent polygon faces (two passes, primary + complement) ──────────
+    const faceA = new THREE.Mesh(polyGeo, new THREE.MeshBasicMaterial({
+      color: colA, transparent: true, opacity: 0.032,
+      side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending,
     }))
-    faceMesh.position.copy(pos)
-    scene.add(faceMesh)
+    faceA.position.copy(pos); scene.add(faceA)
 
-    // ── Polygon edge lines — the "periphery" structure ────────────────────────
-    const edgeGeo  = new THREE.EdgesGeometry(polyGeo, 8)   // 8° threshold — crisp edges
-    const edgeMat  = new THREE.LineBasicMaterial({
-      color: lineColor, transparent: true, opacity: 0.22,
+    const faceB = new THREE.Mesh(polyGeo, new THREE.MeshBasicMaterial({
+      color: colB, transparent: true, opacity: 0.018,
+      side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending,
+    }))
+    faceB.position.copy(pos); scene.add(faceB)
+
+    // ── Primary edge lines — solid glow structure ─────────────────────────────
+    const edgeGeo = new THREE.EdgesGeometry(polyGeo, 8)
+    const phase   = rng() * Math.PI * 2
+
+    const edgeMat = new THREE.LineBasicMaterial({
+      color: edgeColA, transparent: true, opacity: 0.28,
     })
     const edgeMesh = new THREE.LineSegments(edgeGeo, edgeMat)
     edgeMesh.position.copy(pos)
     scene.add(edgeMesh)
+    voidEdgeMats.push({ mat: edgeMat, phase })
 
-    // ── Fresnel membrane sphere — biolumin glow (only for large voids) ────────
-    if (r >= 1.0 && i < 4) {
-      const uniforms = { uTime: { value: 0 }, uColor: { value: faceColor } }
+    // ── Secondary glow edge — additive complement colour ─────────────────────
+    const glowMat = new THREE.LineBasicMaterial({
+      color: edgeColB, transparent: true, opacity: 0.12,
+      blending: THREE.AdditiveBlending,
+    })
+    const glowMesh = new THREE.LineSegments(edgeGeo, glowMat)
+    glowMesh.position.copy(pos)
+    scene.add(glowMesh)
+    voidGlowMats.push({ mat: glowMat, phase: phase + Math.PI * 0.55 })
+
+    // ── Iridescent Fresnel membrane sphere (all voids r ≥ 0.6) ───────────────
+    if (r >= 0.6) {
+      const uniforms = {
+        uTime:   { value: 0 },
+        uColor:  { value: colA },
+        uColor2: { value: colB },
+      }
       voidUniforms.push(uniforms)
 
       const meniscusMat = new THREE.ShaderMaterial({
-        uniforms, vertexShader: VOID_VERT, fragmentShader: VOID_FRAG,
-        transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.FrontSide,
+        uniforms,
+        vertexShader:   VOID_VERT,
+        fragmentShader: VOID_FRAG,
+        transparent: true, depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        side: THREE.FrontSide,
       })
-      const shellMesh = new THREE.Mesh(new THREE.SphereGeometry(r * 0.97, 48, 32), meniscusMat)
+      const shellMesh = new THREE.Mesh(
+        new THREE.SphereGeometry(r * 0.97, 52, 36),
+        meniscusMat,
+      )
       shellMesh.position.copy(pos)
       scene.add(shellMesh)
 
-      // Dark inner fill to show the void interior is truly empty
+      // Dark inner void — true emptiness
       const innerFill = new THREE.Mesh(
         new THREE.SphereGeometry(r * 0.96, 16, 12),
-        new THREE.MeshBasicMaterial({ color: 0x000208, transparent: true, opacity: 0.14, side: THREE.BackSide, depthWrite: false }),
+        new THREE.MeshBasicMaterial({
+          color: 0x000106, transparent: true, opacity: 0.18,
+          side: THREE.BackSide, depthWrite: false,
+        }),
       )
       innerFill.position.copy(pos)
       scene.add(innerFill)
@@ -587,10 +714,9 @@ function buildBlackHoles() {
     const col = new THREE.Color(bh.diskColor)
 
     // Event horizon
-    scene.add(Object.assign(
-      new THREE.Mesh(new THREE.SphereGeometry(bh.diskInner * 0.55, 14, 14), new THREE.MeshBasicMaterial({ color: 0x000000 })),
-      { position: pos.clone() },
-    ))
+    const horizon = new THREE.Mesh(new THREE.SphereGeometry(bh.diskInner * 0.55, 14, 14), new THREE.MeshBasicMaterial({ color: 0x000000 }))
+    horizon.position.copy(pos)
+    scene.add(horizon)
 
     // Lensing halo
     const lens = new THREE.Mesh(new THREE.SphereGeometry(bh.diskInner * 1.05, 14, 14), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.09, depthWrite: false, blending: THREE.AdditiveBlending }))
@@ -615,7 +741,7 @@ function buildBlackHoles() {
       jet.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), sign > 0 ? jetUp : jetUp.clone().negate())
       scene.add(jet); quasarJets.push(jet)
     }
-    scene.add(Object.assign(new THREE.PointLight(bh.diskColor, 0.7, bh.diskOuter * 14), { position: pos.clone() }))
+    const bhLight = new THREE.PointLight(bh.diskColor, 0.7, bh.diskOuter * 14); bhLight.position.copy(pos); scene.add(bhLight)
   }
 
   // BH cluster
@@ -660,7 +786,7 @@ function buildQuasars() {
       jet.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), sign > 0 ? jetDir : jetDir.clone().negate())
       scene.add(jet); quasarJets.push(jet)
     }
-    scene.add(Object.assign(new THREE.PointLight(q.color, 1.4, q.jetLen * 5), { position: pos.clone() }))
+    const qLight = new THREE.PointLight(q.color, 1.4, q.jetLen * 5); qLight.position.copy(pos); scene.add(qLight)
   }
 }
 
@@ -686,7 +812,7 @@ function buildSupernovae() {
       const ring = new THREE.Mesh(new THREE.TorusGeometry(sn.r * 0.92, sn.r * 0.055, 8, 64), new THREE.MeshBasicMaterial({ color: sn.shellCol, transparent: true, opacity: 0.75, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }))
       ring.position.copy(pos); ring.rotation.x = Math.PI / 2 + (Math.random() - 0.5) * 0.8
       scene.add(ring); group.meshes.push(ring)
-      scene.add(Object.assign(new THREE.PointLight(sn.shellCol, 0.55, sn.r * 12), { position: pos.clone() }))
+      const snLight = new THREE.PointLight(sn.shellCol, 0.55, sn.r * 12); snLight.position.copy(pos); scene.add(snLight)
     }
 
     // Contemporary SNe start visible; historical ones start hidden
@@ -698,22 +824,199 @@ function buildSupernovae() {
   }
 }
 
+// ── Laniakea Supercluster — polygonal envelope + galaxy flow lines ────────────
+
+function buildLaniakea() {
+  const MPC = 1 / 15   // 1 Mpc → 0.0667 scene units (MPC_SCALE)
+
+  /** RA/Dec/Mpc → Three.js scene Vector3 (same formula as cosmic-structures.ts) */
+  function toVec(ra: number, dec: number, dist: number): THREE.Vector3 {
+    const raR  = ra  * Math.PI / 180
+    const decR = dec * Math.PI / 180
+    return new THREE.Vector3(
+      dist * Math.cos(decR) * Math.cos(raR),
+      dist * Math.sin(decR),
+      -dist * Math.cos(decR) * Math.sin(raR),
+    ).multiplyScalar(MPC)
+  }
+
+  // ── Great Attractor: convergence focus of all Laniakea galaxy velocities ────
+  // RA 243°, Dec −29°, 65 Mpc  →  (−1.72, −2.10, +3.37) scene
+  const gaPos = toVec(243, -29, 65)
+
+  // Base icosahedron — subdivision 0 = 20 triangular faces, clearly polygonal
+  const icoBase = new THREE.IcosahedronGeometry(1, 0)
+
+  // ── Helper: add one shell (face mesh + wireframe) ───────────────────────────
+  function addShell(
+    sx: number, sy: number, sz: number,
+    warmHex: number, coolHex: number,
+    faceOp: number, wireOp: number,
+    rOrd: number, rotY: number,
+  ) {
+    const geo = icoBase.clone()
+    geo.rotateY(rotY)               // break perfect axis-alignment
+    geo.rotateX(rotY * 0.4)        // slight tilt out of the XZ plane
+    geo.scale(sx, sy, sz)
+
+    // Vertex colour: warm amber at centre → dim red-orange at periphery
+    const posAttr  = geo.attributes['position'] as THREE.BufferAttribute
+    const colArr   = new Float32Array(posAttr.count * 3)
+    const warmCol  = new THREE.Color(warmHex)
+    const coolCol  = new THREE.Color(coolHex)
+    const outerR   = Math.max(sx, sy, sz)
+
+    for (let i = 0; i < posAttr.count; i++) {
+      const vx = posAttr.getX(i), vy = posAttr.getY(i), vz = posAttr.getZ(i)
+      // Normalised radial distance 0 (centre) → 1 (outer vertex)
+      const t = Math.min(1, Math.sqrt(vx*vx + vy*vy + vz*vz) / outerR)
+      const c = warmCol.clone().lerp(coolCol, t * t)   // quadratic — denser warmth inside
+      colArr[i * 3] = c.r; colArr[i * 3 + 1] = c.g; colArr[i * 3 + 2] = c.b
+    }
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(colArr, 3))
+
+    // Face mesh — DoubleSide so interior is lit, AdditiveBlending for glow stack
+    const faceMesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+      vertexColors: true,
+      transparent:  true,
+      opacity:      faceOp,
+      side:         THREE.DoubleSide,
+      depthWrite:   false,
+      blending:     THREE.AdditiveBlending,
+    }))
+    faceMesh.position.copy(gaPos)
+    faceMesh.renderOrder = rOrd
+    scene.add(faceMesh)
+    laniakeaObjs.push(faceMesh)
+
+    // Wireframe overlay — EdgesGeometry on the same scaled geo
+    // 8° threshold: shows the 30 polygon edges of the icosahedron clearly
+    const edgeGeo  = new THREE.EdgesGeometry(geo, 8)
+    const wireCol  = new THREE.Color(warmHex).lerp(new THREE.Color(coolHex), 0.25)
+    const wireMesh = new THREE.LineSegments(edgeGeo, new THREE.LineBasicMaterial({
+      color:       wireCol,
+      transparent: true,
+      opacity:     wireOp,
+      blending:    THREE.AdditiveBlending,
+      depthWrite:  false,
+    }))
+    wireMesh.position.copy(gaPos)
+    wireMesh.renderOrder = rOrd - 2
+    scene.add(wireMesh)
+    laniakeaObjs.push(wireMesh)
+  }
+
+  // ── Outer envelope — full Laniakea extent, ~160 Mpc main axis ───────────────
+  // sx 5.2 ≈ 78 Mpc · sy 2.3 ≈ 35 Mpc (SGZ thin dimension) · sz 5.8 ≈ 87 Mpc
+  addShell(5.2, 2.3, 5.8,  0xcc7218, 0x7a2e08,  0.022, 0.115,  16, 0.26)
+
+  // ── Inner density shell — ~80 Mpc, higher opacity ────────────────────────────
+  addShell(2.9, 1.35, 3.2, 0xe08c20, 0x9a3c10,  0.036, 0.082,  18, -0.14)
+
+  // ── Great Attractor core glow ─────────────────────────────────────────────────
+  // Three concentric spheres: bright nucleus → mid halo → faint outer pull
+  const gaLayers = [
+    { r: 0.40, col: 0xffb040, op: 0.42, rOrd: 26 },
+    { r: 1.05, col: 0xff8818, op: 0.08, rOrd: 24 },
+    { r: 2.30, col: 0xe06012, op: 0.028,rOrd: 22 },
+  ]
+  for (const { r, col, op, rOrd } of gaLayers) {
+    const m = new THREE.Mesh(
+      new THREE.SphereGeometry(r, 12, 9),
+      new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: op,
+        depthWrite: false, blending: THREE.AdditiveBlending }),
+    )
+    m.position.copy(gaPos)
+    m.renderOrder = rOrd
+    scene.add(m)
+    laniakeaObjs.push(m)
+  }
+
+  // ── Galaxy flow lines — velocity streams converging on the Great Attractor ───
+  // These are the physical definition of Laniakea: any galaxy whose peculiar
+  // velocity stream flows toward the GA is *in* Laniakea (Tully et al. 2014).
+  laniakeaFlowMat = new THREE.LineBasicMaterial({
+    color:       new THREE.Color(0xdd8f22),
+    transparent: true,
+    opacity:     0.10,
+    blending:    THREE.AdditiveBlending,
+    depthWrite:  false,
+  })
+
+  const flowSources: THREE.Vector3[] = [
+    toVec(  0,     0,     0 ),   // Milky Way (origin)
+    toVec(187.7,  12.3,  16.5),  // Virgo Cluster
+    toVec(192.2, -41.3,  46.0),  // Centaurus Cluster (Abell 3526)
+    toVec(159.2, -27.5,  59.0),  // Hydra Cluster (Abell 1060 — corrected 59 Mpc)
+    toVec( 54.6, -35.4,  19.9),  // Fornax Cluster
+    toVec(243.3, -60.9,  65.0),  // Norma Cluster (Abell 3627) — GA dominant cluster
+    toVec(150,    28,    48  ),  // Ursa Major lobe
+    toVec(315,   -18,    55  ),  // Telescopium-Grus arm
+    toVec( 30,    10,    35  ),  // Pisces-Cetus approach
+  ]
+
+  for (const src of flowSources) {
+    const toGa  = gaPos.clone().sub(src)
+    // Control point at 40% of the way, curled slightly perpendicular (in XZ plane)
+    const perp  = new THREE.Vector3(-toGa.z, toGa.y * 0.15, toGa.x)
+      .normalize()
+      .multiplyScalar(0.55 + src.length() * 0.045)
+    const mid   = src.clone().lerp(gaPos, 0.40).add(perp)
+
+    const curve = new THREE.QuadraticBezierCurve3(src, mid, gaPos)
+    const pts   = curve.getPoints(20)
+    const geo   = new THREE.BufferGeometry().setFromPoints(pts)
+    const line  = new THREE.Line(geo, laniakeaFlowMat)
+    line.renderOrder = 8
+    scene.add(line)
+    laniakeaObjs.push(line)
+  }
+
+  // Warm point light near the GA — adds a subtle amber tint to nearby clusters
+  const gaLight = new THREE.PointLight(0xff8820, 0.28, 9)
+  gaLight.position.copy(gaPos)
+  scene.add(gaLight)
+  laniakeaObjs.push(gaLight)
+}
+
 function buildClusters() {
   // Milky Way
   const mwCol = new THREE.Color(0xffd480)
-  scene.add(Object.assign(new THREE.Mesh(new THREE.SphereGeometry(0.20, 14, 14), new THREE.MeshStandardMaterial({ color: mwCol, emissive: mwCol, emissiveIntensity: 1.3 })), { position: new THREE.Vector3() }))
-  scene.add(Object.assign(new THREE.Mesh(new THREE.SphereGeometry(0.65, 8, 8), new THREE.MeshBasicMaterial({ color: mwCol, transparent: true, opacity: 0.09, depthWrite: false, blending: THREE.AdditiveBlending })), { position: new THREE.Vector3() }))
-  scene.add(Object.assign(new THREE.PointLight(0xffd480, 0.8, 12), { position: new THREE.Vector3() }))
+  scene.add(new THREE.Mesh(new THREE.SphereGeometry(0.20, 14, 14), new THREE.MeshStandardMaterial({ color: mwCol, emissive: mwCol, emissiveIntensity: 1.3 })))
+  scene.add(new THREE.Mesh(new THREE.SphereGeometry(0.65, 8, 8), new THREE.MeshBasicMaterial({ color: mwCol, transparent: true, opacity: 0.09, depthWrite: false, blending: THREE.AdditiveBlending })))
+  scene.add(new THREE.PointLight(0xffd480, 0.8, 12))
 
+  hitMeshes = []   // reset on rebuild
   for (const c of CLUSTERS.filter(cl => cl.name !== 'Milky Way')) {
     const pos = clusterScenePos(c)
     const col = new THREE.Color(c.color)
     const r   = 0.07 + c.richness * 0.018
+
+    // Visible glow sphere
     const cm  = new THREE.Mesh(new THREE.SphereGeometry(r, 8, 8), new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: 0.9 }))
     cm.position.copy(pos); scene.add(cm)
     const cg  = new THREE.Mesh(new THREE.SphereGeometry(r * 4, 6, 6), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.05, depthWrite: false, blending: THREE.AdditiveBlending }))
     cg.position.copy(pos); scene.add(cg)
+
+    // Invisible hit sphere — generous radius for comfortable clicking
+    const hitR   = Math.max(0.30, r * 5)
+    const hitGeo = new THREE.SphereGeometry(hitR, 6, 6)
+    const hitMat = new THREE.MeshBasicMaterial({ visible: false })
+    const hitMesh = new THREE.Mesh(hitGeo, hitMat)
+    hitMesh.position.copy(pos)
+    hitMesh.userData.clusterName = c.name
+    scene.add(hitMesh)
+    hitMeshes.push(hitMesh)
   }
+
+  // Milky Way is also clickable — enter galaxy view
+  const mwHit = new THREE.Mesh(
+    new THREE.SphereGeometry(0.9, 6, 6),
+    new THREE.MeshBasicMaterial({ visible: false }),
+  )
+  mwHit.userData.clusterName = 'milky-way'
+  scene.add(mwHit)
+  hitMeshes.push(mwHit)
 }
 
 // ── Cluster label projection ──────────────────────────────────────────────────
@@ -815,6 +1118,7 @@ function initScene() {
   buildBlackHoles()
   buildQuasars()
   buildSupernovae()
+  buildLaniakea()
   buildClusters()
 
   startLoop()
@@ -834,6 +1138,16 @@ function startLoop() {
     const t     = nowMs / 1000
 
     for (const u of voidUniforms) u.uTime.value = t
+
+    // Edge shimmer — primary slow pulse, glow fast shimmer
+    for (let ei = 0; ei < voidEdgeMats.length; ei++) {
+      const { mat, phase } = voidEdgeMats[ei]!
+      mat.opacity = 0.18 + 0.14 * Math.sin(t * 0.55 + phase)
+    }
+    for (let gi = 0; gi < voidGlowMats.length; gi++) {
+      const { mat, phase } = voidGlowMats[gi]!
+      mat.opacity = 0.06 + 0.10 * Math.sin(t * 1.10 + phase)
+    }
 
     for (let i = 0; i < accretionDisks.length; i++) {
       accretionDisks[i]!.rotation.y += 0.0045 + i * 0.0008
@@ -907,29 +1221,86 @@ onUnmounted(() => {
   window.removeEventListener('resize', onResize)
   renderer?.dispose()
   controls?.dispose()
-  accretionDisks = []; quasarJets = []; novaShells = []; snovaGroups = []; voidUniforms = []; bhClusterOrbs = []
+  accretionDisks = []; quasarJets = []; novaShells = []; snovaGroups = []
+  voidUniforms = []; voidEdgeMats = []; voidGlowMats = []; bhClusterOrbs = []
+  for (const obj of laniakeaObjs) {
+    scene?.remove(obj)
+    if ((obj as THREE.Mesh).isMesh) {
+      const m = obj as THREE.Mesh
+      m.geometry?.dispose()
+      if (Array.isArray(m.material)) m.material.forEach(x => x.dispose())
+      else (m.material as THREE.Material | undefined)?.dispose()
+    } else if ((obj as THREE.Line).isLine) {
+      (obj as THREE.Line).geometry?.dispose()
+    }
+  }
+  laniakeaObjs = []
+  laniakeaFlowMat?.dispose(); laniakeaFlowMat = undefined
 })
 </script>
 
 <style scoped>
+/* ── Get Started entry button ────────────────────────────────────── */
+
+.ob-entry-btn-wrap {
+  position: absolute;
+  bottom: 108px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  pointer-events: all;
+}
+
+.ob-entry-btn {
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  box-shadow: 0 4px 20px rgba(0, 180, 220, 0.28), 0 0 0 1px rgba(0, 200, 240, 0.18);
+  animation: ob-entry-glow 3s ease-in-out infinite;
+}
+
+@keyframes ob-entry-glow {
+  0%, 100% { box-shadow: 0 4px 20px rgba(0,180,220,0.28), 0 0 0 1px rgba(0,200,240,0.18); }
+  50%       { box-shadow: 0 4px 28px rgba(0,210,255,0.45), 0 0 0 1px rgba(0,230,255,0.35); }
+}
+
 /* ── Cluster label overlay ────────────────────────────────────────── */
 
 .labels-layer {
   position: absolute;
   inset: 0;
-  pointer-events: none;
+  pointer-events: none;   /* layer itself is passthrough */
   z-index: 3;
   overflow: hidden;
 }
 
 .cluster-label {
   position: absolute;
-  /* labels appear ABOVE the projected cluster position */
   transform: translate(-50%, -100%);
   padding-bottom: 0;
   text-align: center;
-  pointer-events: none;
+  pointer-events: none;   /* default: non-interactive */
   will-change: opacity;
+  user-select: none;
+}
+
+/* Clickable variant — label becomes interactive */
+.cluster-label--clickable {
+  pointer-events: all;
+  cursor: pointer;
+  border-radius: 4px;
+  padding: 4px 7px 3px;
+  transition: background 0.14s;
+}
+.cluster-label--clickable:hover {
+  background: rgba(0, 60, 100, 0.50);
+}
+.cluster-label--clickable:hover .cl-name {
+  color: rgba(0, 230, 255, 0.95);
+  text-shadow: 0 0 8px rgba(0, 200, 255, 0.50);
+}
+.cluster-label--clickable:hover .cl-tick {
+  background: linear-gradient(to bottom, rgba(0, 230, 255, 0.65), rgba(0, 200, 255, 0.10));
 }
 
 .cl-name {
@@ -959,6 +1330,20 @@ onUnmounted(() => {
   letter-spacing: 0.05em;
   margin-top: 1px;
   line-height: 1.3;
+}
+
+/* "→ enter field" call-to-action — shown on hover via parent hover */
+.cl-enter {
+  font-family: 'Courier New', monospace;
+  font-size: 6px;
+  letter-spacing: 0.10em;
+  color: rgba(0, 200, 240, 0.0);   /* invisible by default */
+  margin-top: 2px;
+  transition: color 0.14s;
+  white-space: nowrap;
+}
+.cluster-label--clickable:hover .cl-enter {
+  color: rgba(0, 210, 255, 0.75);
 }
 
 /* Downward tick mark connecting the label to the cluster dot */

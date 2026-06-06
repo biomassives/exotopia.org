@@ -5,11 +5,14 @@
     <div class="chain-header">
       <div class="chain-title">
         <q-icon name="mdi-link-variant" color="cyan-5" size="18px" class="q-mr-sm" />
-        CHAIN SUPPORT MATRIX
+        NETWORKS
       </div>
       <div class="chain-sub">
-        NFT minting, certification, and collectible schemas actively supported across 6 networks.
-        Status reflects current deployment — not all combinations are live simultaneously.
+        NFT minting, certification, and collectible schemas across 6 networks.
+        Status reflects current testnet deployment.
+        <router-link to="/docs#chains-section" style="color:rgba(0,200,240,0.70);margin-left:8px;font-size:9px">
+          ↗ Full network docs
+        </router-link>
       </div>
     </div>
 
@@ -124,7 +127,7 @@
       </div>
       <div class="fn-row">
         <span class="fn-bullet">◈</span>
-        <span>The 80/15/5 Resonance Split applies on all chains. 80% creator · 15% Hardware Fund · 5% platform.</span>
+        <span>The 100/0/0 — Platform Free applies on all chains. 100% creator — platform is free.</span>
       </div>
       <div class="fn-row">
         <span class="fn-bullet">◈</span>
@@ -163,7 +166,7 @@ const CHAINS: Chain[] = [
   {
     id: 'matic', name: 'Polygon', ticker: 'MATIC', color: '#8247e5',
     standard: 'ERC-721 (OpenSea)',
-    desc: '$BARS music NFTs, Water Quality Certifications, and Health Card IDs. EVM-compatible; MetaMask support. Low gas on PoS chain.',
+    desc: '$SUNLIGHT music NFTs, Water Quality Certifications, and Health Card IDs. EVM-compatible; MetaMask support. Low gas on PoS chain.',
     testnet: 'Polygon Amoy (chainId 80002)',
     faucet: 'https://faucet.polygon.technology',
     overallStatus: 'testing',
@@ -179,7 +182,7 @@ const CHAINS: Chain[] = [
   {
     id: 'tez', name: 'Tezos', ticker: 'TEZ', color: '#2c7df7',
     standard: 'FA2 (TZIP-12)',
-    desc: 'Planned for art collectibles and $BARS music NFTs. Tezos has a strong NFT art culture (Objkt, fxhash). Low energy, on-chain metadata standard.',
+    desc: 'Planned for art collectibles and $SUNLIGHT music NFTs. Tezos has a strong NFT art culture (Objkt, fxhash). Low energy, on-chain metadata standard.',
     testnet: 'Ghostnet',
     faucet: 'https://faucet.ghostnet.teztnets.com',
     overallStatus: 'planned',
@@ -218,7 +221,7 @@ const NFT_TYPES: NftRow[] = [
   { id: 'module',    label: 'Station Module NFT',         sub: 'Functional zone (gallery / watsan / energy …)' },
   { id: 'ecoobj',    label: 'EcocitySolution (3D object)',sub: 'Exchangeable sustainable design model' },
   { id: 's_sound',   label: 'SOUND & CULTURE',            isSection: true },
-  { id: 'bars',      label: '$BARS Music NFT',             sub: 'Sound ownership · licensing · royalties' },
+  { id: 'sunlight',      label: '$SUNLIGHT Music NFT',             sub: 'Sound ownership · licensing · royalties' },
   { id: 'poap',      label: 'Event POAP',                  sub: 'Attendance proof · voting weight' },
   { id: 'collect',   label: 'Art Collectible',             sub: 'Visual art · rarity tiers · tradeable' },
   { id: 's_cert',    label: 'CERTIFICATIONS & CREDS',     isSection: true },

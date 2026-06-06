@@ -28,7 +28,7 @@ All variables use `{{double_brace}}` syntax (Mailgun Handlebars / Supabase Edge 
 | `{{ponink_url}}` | computed | `https://pon.ink/@amara_eco` |
 | `{{event_name}}` | event_schedule.name | `Fana Ka — June Session` |
 | `{{event_date_local}}` | formatted for recipient TZ | `Friday 12 June, 7pm EAT` |
-| `{{net_amount_kes}}` | resonance split 80% of 5 USDC | `520` |
+| `{{net_amount_kes}}` | resonance split 99% of 5 USDC | `643` |
 | `{{lang}}` | artist_profiles.language | `en` / `sw` |
 
 ---
@@ -92,16 +92,16 @@ All variables use `{{double_brace}}` syntax (Mailgun Handlebars / Supabase Edge 
     Mule learns from everything you add to it.
   </p>
 
-  <!-- What your Robot Mule is -->
+  <!-- What your mule-bot is -->
   <div style="border-left:3px solid #005577; padding:10px 14px; margin-bottom:20px;">
     <div style="font-size:8px; letter-spacing:0.14em; color:#336688; margin-bottom:4px;">
-      YOUR ROBOT MULE — CURRENT TIER: {{mule_tier}}
+      YOUR MULE-BOT — CURRENT TIER: {{mule_tier}}
     </div>
     <p style="font-size:10px; color:#8899aa; line-height:1.7; margin:0;">
-      Your Mule is a knowledge assistant that lives in your settlement gallery. As you add
-      corpus items — your bio, your work, your eco-ops story — it grows through the tiers:
-      Foal → Colt → Stallion → Sovereign. Visitors to your settlement meet your Mule first.
-      It speaks in your words, not ours.
+      Your mule-bot is a land-connected knowledge specialist that lives in your settlement.
+      As you add corpus items — your bio, your work, your eco-ops story, your land care
+      records — it grows through the tiers: Foal → Colt → Stallion → Sovereign. Visitors
+      to your settlement meet your mule-bot first. It speaks in your words, not ours.
     </p>
   </div>
 
@@ -112,25 +112,26 @@ All variables use `{{double_brace}}` syntax (Mailgun Handlebars / Supabase Edge 
       HOW THE MONEY MOVES — THE RESONANCE SPLIT
     </div>
     <div style="display:flex; gap:0; font-size:10px;">
-      <div style="flex:80; background:#003344; padding:8px 10px; border-radius:4px 0 0 4px;
+      <div style="flex:99; background:#003344; padding:8px 10px; border-radius:4px 0 0 4px;
                   text-align:center;">
-        <div style="color:#00e5ff; font-size:16px; font-weight:bold;">80%</div>
+        <div style="color:#00e5ff; font-size:16px; font-weight:bold;">99%</div>
         <div style="color:#558899; font-size:8px; margin-top:2px;">to you</div>
       </div>
-      <div style="flex:15; background:#001e2e; padding:8px 10px; text-align:center;">
-        <div style="color:#336655; font-size:16px;">15%</div>
-        <div style="color:#334455; font-size:8px; margin-top:2px;">hardware fund</div>
+      <div style="flex:1; background:#001e2e; padding:8px 4px; text-align:center;">
+        <div style="color:#336655; font-size:11px;">0.75%</div>
+        <div style="color:#334455; font-size:7px; margin-top:2px;">hardware</div>
       </div>
-      <div style="flex:5; background:#00121c; padding:8px 10px;
+      <div style="flex:1; background:#00121c; padding:8px 4px;
                   border-radius:0 4px 4px 0; text-align:center;">
-        <div style="color:#224433; font-size:16px;">5%</div>
-        <div style="color:#223333; font-size:8px; margin-top:2px;">platform</div>
+        <div style="color:#224433; font-size:11px;">0.25%</div>
+        <div style="color:#223333; font-size:7px; margin-top:2px;">platform</div>
       </div>
     </div>
     <p style="font-size:9px; color:#446677; margin:10px 0 0; line-height:1.6;">
       Every transaction shows you the net amount in KES before you confirm.
-      The 15% hardware fund goes directly toward WATSAN equipment and
-      field infrastructure for communities like yours. We never mix these numbers.
+      The 0.75% hardware fund goes directly toward WATSAN equipment and
+      field infrastructure for communities like yours. The 0.25% platform share
+      keeps the network running. We never mix these numbers.
     </p>
   </div>
 
@@ -157,7 +158,7 @@ All variables use `{{double_brace}}` syntax (Mailgun Handlebars / Supabase Edge 
       </td>
       <td style="padding:8px 10px; border-bottom:1px solid #001e2e; font-size:10px;
                  color:#88aacc; line-height:1.6;">
-        <strong style="color:#aaccdd;">Add three corpus items to your Robot Mule.</strong>
+        <strong style="color:#aaccdd;">Add three corpus items to your mule-bot.</strong>
         A bio note, a recent project description, and one thing you want visitors to know.
         This moves you from Foal to Colt tier.
       </td>
@@ -168,7 +169,7 @@ All variables use `{{double_brace}}` syntax (Mailgun Handlebars / Supabase Edge 
       </td>
       <td style="padding:8px 10px; font-size:10px; color:#88aacc; line-height:1.6;">
         <strong style="color:#aaccdd;">Visit your settlement in Exotopia.</strong>
-        Walk through the dome. Find the stone circle. Your Mule is waiting.
+        Walk through the dome. Find the stone circle. Your mule-bot is waiting.
       </td>
     </tr>
   </table>
@@ -297,7 +298,7 @@ Here is what to do next.
 
 First: open the link we sent you and enter your settlement. Your dome is waiting.
 
-Second: add your story to your Robot Mule. The more you share, the more it can
+Second: add your story to your mule-bot. The more you share, the more it can
 represent you to people who visit.
 
 Third: submit your first eco-ops check-in through the pon ink app. Even one
@@ -325,7 +326,7 @@ Check the link we sent for next steps. Goodbye.
 Hello {{first_name}}. Congratulations. You have reached {{eco_ops_count}}
 eco-ops check-ins. A new settlement object has been added to your dome at
 {{planet_name}}. Your estimated reward is {{net_amount_kes}} Kenyan shillings,
-eighty percent of the total. Visit your pon ink dashboard to view it.
+ninety-nine percent of the total. Visit your pon ink dashboard to view it.
 ```
 
 ---
@@ -360,7 +361,7 @@ serve(async (req) => {
     ponink_url:      `https://pon.ink/@${profile.handle}`,
     mule_tier:       profile.mule_corpus?.tier ?? 'Foal',
     eco_ops_count:   milestone?.checkin_count ?? 0,
-    net_amount_kes:  Math.round((milestone?.reward_usdc ?? 0) * 0.80 * 130).toString(),
+    net_amount_kes:  Math.round((milestone?.reward_usdc ?? 0) * 0.99 * 130).toString(),
     community_name:  profile.community ?? '',
     facilitator_name: profile.facilitator ?? '',
     lang:            profile.language ?? 'en',

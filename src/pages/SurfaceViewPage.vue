@@ -1,15 +1,9 @@
 <template>
-  <q-page class="surface-page bg-black overflow-hidden">
-
-    <!-- ── Three.js canvas ─────────────────────────────────────── -->
-    <canvas
-      ref="canvas"
-      class="three-canvas"
-      :class="{ 'canvas--xray': viewMode === 'xray' }"
-      @mousemove="onMouseMove"
-      @mouseleave="hoveredObject = null"
-      @click="onCanvasClick"
-    />
+  <q-page class="surface-page viz-overlay-page"
+    @mousemove="onMouseMove"
+    @mouseleave="hoveredObject = null"
+    @click="onCanvasClick"
+  >
 
     <!-- ── X-RAY mode overlays ────────────────────────────────────── -->
     <Transition name="xray-fade">
@@ -152,48 +146,149 @@
             </div>
           </div>
 
-          <!-- Sibling planets -->
-          <div class="pip-section" v-if="siblingPlanets.length">
-            <div class="pip-section-label">
-              SYSTEM · {{ siblingPlanets.length + 1 }} PLANETS TOTAL
+          <!-- ── Climate estimates ────────────────────────────────── -->
+          <div class="pip-section pip-section--climate" v-if="climateProfile">
+            <div class="pip-section-label">CLIMATE ESTIMATES</div>
+
+            <!-- Day length -->
+            <div class="pip-row">
+              <span class="pip-k">Day length</span>
+              <span class="pip-v pip-v--mono">{{ climateProfile.day.label }}</span>
             </div>
-            <div
-              v-for="sib in siblingPlanets"
-              :key="sib.pl_name"
-              class="pip-sibling"
-            >
-              <span
-                class="pip-sib-dot"
-                :style="{ background: siblingColor(sib.pl_eqt, sib.pl_orbsmax) }"
-              />
-              <span class="pip-sib-name"
-                :class="sib.pl_name === planetName ? 'pip-sib--here' : ''"
-              >
-                {{ sib.pl_name }}
-                <span v-if="sib.pl_name === planetName" class="pip-here-tag">← here</span>
+
+            <!-- Binary note -->
+            <div v-if="climateProfile.isBinary" class="pip-climate-note pip-climate-note--binary">
+              ★★ {{ climateProfile.binaryNote }}
+            </div>
+
+            <!-- Diurnal range -->
+            <template v-if="climateProfile.day.mode === 'locked'">
+              <div class="pip-row">
+                <span class="pip-k">Dayside</span>
+                <span class="pip-v pip-v--warm">{{ fmtK(climateProfile.diurnal.dayK) }}</span>
+              </div>
+              <div class="pip-row">
+                <span class="pip-k">Nightside</span>
+                <span class="pip-v pip-v--cool">{{ fmtK(climateProfile.diurnal.nightK) }}</span>
+              </div>
+              <div class="pip-climate-note">Permanent day/night · terminator zone most habitable</div>
+            </template>
+            <template v-else>
+              <div class="pip-row">
+                <span class="pip-k">Day/Night Δ</span>
+                <span class="pip-v pip-v--mono">
+                  {{ fmtRng(climateProfile.diurnal.nightK, climateProfile.diurnal.dayK) }}
+                </span>
+              </div>
+            </template>
+
+            <!-- Seasonal -->
+            <div class="pip-row">
+              <span class="pip-k">Seasons</span>
+              <span class="pip-v pip-v--mono">
+                {{ climateProfile.seasonal.deltaK === 0
+                    ? 'Circular orbit — stable'
+                    : fmtRng(climateProfile.seasonal.aphelionK, climateProfile.seasonal.perihelionK) }}
               </span>
-              <span class="pip-sib-au" v-if="sib.pl_orbsmax">
-                {{ sib.pl_orbsmax.toFixed(2) }} AU
-              </span>
+            </div>
+
+            <!-- Confidence caveat -->
+            <div class="pip-climate-note">
+              {{ climateProfile.day.note }}
             </div>
           </div>
 
-          <!-- Moons -->
-          <div class="pip-section" v-if="moonPanelCount > 0">
-            <div class="pip-section-label">EXOMOONS</div>
-            <div class="pip-row">
-              <span class="pip-k">Count</span>
-              <span class="pip-v">
-                {{ moonPanelCount }}
-                <span class="pip-source">
-                  {{ system?.sy_mnum ? '(NASA archive)' : '(type-estimated)' }}
-                </span>
-              </span>
+          <!-- THIS PLANET section re-opened for settlement button -->
+          <div class="pip-section">
+            <button v-if="planet && !hasThisSettlement" class="pip-claim-primary"
+              @click="openSettlement">
+              ⬡ Create a Settlement
+            </button>
+            <button v-else-if="planet && hasThisSettlement" class="pip-claim-primary pip-claim-primary--manage"
+              @click="openSettlement">
+              ⬡ Use Your Settlement
+            </button>
+          </div>
+
+          <!-- Sibling planets — chip grid -->
+          <div class="pip-section pip-section--chips" v-if="siblingPlanets.length">
+            <div class="pip-section-label">SYSTEM PLANETS · {{ siblingPlanets.length }}</div>
+            <div class="pip-chips-grid">
+              <div
+                v-for="sib in siblingPlanets"
+                :key="sib.pl_name"
+                class="pip-chip"
+                :class="{ 'pip-chip--here': sib.pl_name === planetName }"
+              >
+                <div class="ppc-head"
+                  @click="sib.pl_name !== planetName && navigateToPlanet(sib)">
+                  <span class="ppc-dot"
+                    :style="{ background: siblingColor(sib.pl_eqt, sib.pl_orbsmax) }" />
+                  <span class="ppc-name">{{ planetShortName(sib) }}</span>
+                  <span v-if="sib.pl_name === planetName" class="ppc-here">◈</span>
+                </div>
+                <div class="ppc-au">
+                  {{ sib.pl_orbsmax != null ? sib.pl_orbsmax.toFixed(2) + ' AU' : '—' }}
+                </div>
+                <button class="ppc-claim"
+                  :class="{ 'ppc-claim--has': hasSettlement(surfaceKey(sib.pl_name)) }"
+                  @click.stop="router.push(mintClaimUrl(sib, 'exo-surface-v1'))">
+                  {{ hasSettlement(surfaceKey(sib.pl_name)) ? '⬡ manage' : '⬡ settle' }}
+                </button>
+              </div>
             </div>
+          </div>
+
+          <!-- Moon pulldown -->
+          <div class="pip-section pip-moon-section" v-if="moonPanelCount > 0">
+            <div class="pip-moon-header" @click="moonDropdownOpen = !moonDropdownOpen">
+              <span class="pip-section-label" style="margin:0">
+                EXOMOONS · {{ moonPanelCount }}
+              </span>
+              <span class="pip-source" style="margin-left:auto;margin-right:4px">
+                {{ system?.sy_mnum ? 'archive' : 'estimated' }}
+              </span>
+              <span class="pip-toggle">{{ moonDropdownOpen ? '▲' : '▼' }}</span>
+            </div>
+            <Transition name="pip-expand">
+              <div v-if="moonDropdownOpen" class="pip-moon-list">
+                <div v-for="mi in moonPanelCount" :key="mi" class="pip-moon-entry">
+                  <div class="pme-label">
+                    Moon {{ MOON_NUMERALS[mi - 1] || mi }}
+                    <span class="pme-of">of {{ planetName }}</span>
+                  </div>
+                  <div class="pme-claims" v-if="planet">
+                    <button class="pme-claim pme-claim--l4"
+                      @click="router.push(mintClaimUrl(planet, 'exo-moon-surface-v1', mi))"
+                      title="L4 SUBLUNARY — moon surface">
+                      L4 SURFACE
+                    </button>
+                    <button class="pme-claim pme-claim--l5"
+                      @click="router.push(mintClaimUrl(planet, 'exo-moon-lagrange-v1', mi))"
+                      title="L5 SYZYGY — Lagrange point">
+                      L5 SYZYGY
+                    </button>
+                    <button class="pme-claim pme-claim--l6"
+                      @click="router.push(mintClaimUrl(planet, 'exo-moon-interface-v1', mi))"
+                      title="L6 LIMINAL — moon–planet interface">
+                      L6 LIMINAL
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </Transition>
           </div>
 
         </div>
       </Transition>
+
+      <!-- ── Settlement hashmark — secondary pulldown ───────────── -->
+      <SettlementHashmark
+        :planet="planet"
+        :system="system"
+        :lat="isMoonView ? undefined : 0"
+        :lon="isMoonView ? undefined : 0"
+      />
     </div>
 
     <!-- ── Settlement address badge ────────────────────────────── -->
@@ -217,6 +312,36 @@
         />
         <span class="text-caption presence-label">{{ orbDefs.length }} Mules · tap to learn more</span>
       </div>
+    </div>
+
+    <!-- ── Location context panel ────────────────────────────────── -->
+    <div v-if="sceneReady && system" class="loc-panel">
+      <div class="loc-header" @click="locPanelOpen = !locPanelOpen">
+        <q-icon name="mdi-map-marker-radius-outline" size="11px" color="cyan-5" class="q-mr-xs" />
+        <span class="loc-title">LOCATION</span>
+        <q-space />
+        <span class="loc-toggle">{{ locPanelOpen ? '▲' : '▼' }}</span>
+      </div>
+      <Transition name="pip-expand">
+        <div v-if="locPanelOpen" class="loc-body">
+          <div class="loc-tabs">
+            <button :class="['loc-tab', locTab==='galaxy' && 'loc-tab--active']"
+              @click="setLocTab('galaxy')">GALAXY</button>
+            <button :class="['loc-tab', locTab==='cosmic' && 'loc-tab--active']"
+              @click="setLocTab('cosmic')">COSMIC</button>
+          </div>
+          <canvas ref="galCanvas"  class="loc-canvas" v-show="locTab==='galaxy'" width="168" height="112" />
+          <canvas ref="cosmCanvas" class="loc-canvas" v-show="locTab==='cosmic'" width="168" height="112" />
+          <div class="loc-nav">
+            <button v-if="locTab==='galaxy'" class="loc-nav-btn" @click="goBackToGalaxy">
+              <q-icon name="scatter_plot" size="9px" class="q-mr-xs" />Galaxy View
+            </button>
+            <button v-else class="loc-nav-btn" @click="goToCosmic">
+              <q-icon name="mdi-weather-night" size="9px" class="q-mr-xs" />Cosmic View
+            </button>
+          </div>
+        </div>
+      </Transition>
     </div>
 
     <!-- ── Hover tooltip ───────────────────────────────────────── -->
@@ -289,7 +414,7 @@
           <q-tooltip>Pyramid transit</q-tooltip>
         </q-btn>
         <q-btn flat dense round icon="arrow_back" color="blue-grey-4" size="sm"
-          @click="$router.push({ path: '/galaxy', query: { focusHost: hostname } })">
+          @click="goBackToGalaxy()">
           <q-tooltip>Back to star system</q-tooltip>
         </q-btn>
       </div>
@@ -370,6 +495,13 @@
       </div>
     </Transition>
 
+    <!-- ── Planet claim overlay ─────────────────────────────────────── -->
+    <PlanetClaimOverlay
+      v-model="claimOverlayOpen"
+      :planet="planet"
+      :system="system"
+    />
+
     <DefenderNav
       ref="defenderNav"
       mode="surface"
@@ -378,6 +510,7 @@
       @portalTo="onDefenderPortalTo"
       @viewModeChange="onViewModeChange"
       @contextZoom="onContextZoom"
+      @ascendRealm="goBackToGalaxy"
     />
 
     <!-- ── DK.MAT wormhole key panel ──────────────────────────────────── -->
@@ -645,9 +778,12 @@
  * Route: /surface/:hostname/:planetName?parent=<parentPlanetName>
  */
 
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { useVizRenderer } from 'src/composables/useVizRenderer'
 import { useRoute, useRouter }                           from 'vue-router'
 import NavigatorInset                                    from 'src/components/NavigatorInset.vue'
+import PlanetClaimOverlay                               from 'src/components/PlanetClaimOverlay.vue'
+import SettlementHashmark                               from 'src/components/SettlementHashmark.vue'
 import DefenderNav                                       from 'src/components/DefenderNav.vue'
 import type { DefenderNavData, SkyObjectEntry, SkyObjectType, DefenderTarget } from 'src/lib/defender-nav.types'
 import gsap                                              from 'gsap'
@@ -662,10 +798,15 @@ import {
   skyPosition,
   buildTerrainGeometry,
   surfacePaletteFor,
+  disposeScene,
 } from 'src/lib/three-utils'
 import { enforceSessionHorizon, detectBandwidthTier } from 'src/lib/security'
 import { logNavEvent }                                from 'src/lib/nav-history'
+import { useSettlements, surfaceKey, moonKey }        from 'src/lib/settlements'
 import type { Planet } from 'src/stores/galaxy'
+import {
+  buildClimateProfile, formatTempK, formatRangeK, usesFahrenheit,
+} from 'src/lib/planet-climate'
 
 // ── Route / props ─────────────────────────────────────────────────────────────
 
@@ -681,6 +822,7 @@ const isMoonView = computed(() => !!parentName.value)
 
 const galaxyStore = useGalaxyStore()
 const portalStore = usePortalStore()
+const { hasSettlement, addSettlement: recordSettlement } = useSettlements()
 
 const system      = computed(() => galaxyStore.getSystem(hostname.value) ?? null)
 const planet      = computed(() => galaxyStore.getPlanet(planetName.value) ?? null)
@@ -714,7 +856,45 @@ const headerStats = computed(() => {
 
 // ── Planet info panel ─────────────────────────────────────────────────────────
 
-const infoPanelOpen = ref(false)
+const infoPanelOpen    = ref(false)
+const claimOverlayOpen = ref(false)
+const moonDropdownOpen = ref(false)
+
+const settlementKey     = computed(() => isMoonView.value
+  ? moonKey(parentName.value || planetName.value, 1, 'exo-moon-surface-v1')
+  : surfaceKey(planetName.value))
+const hasThisSettlement = computed(() => hasSettlement(settlementKey.value))
+
+function openSettlement() {
+  if (!hasThisSettlement.value && planet.value) {
+    recordSettlement({
+      key:         settlementKey.value,
+      type:        isMoonView.value ? 'moon' : 'surface',
+      planetName:  planetName.value,
+      hostname:    hostname.value,
+      exolocation: `exo-surface-v1:${hostname.value}:${planetName.value}`,
+      displayName: `${planetName.value} · ${hostname.value}`,
+    })
+  }
+  claimOverlayOpen.value = true
+}
+
+const MOON_NUMERALS = ['I','II','III','IV','V','VI','VII','VIII','IX','X']
+
+function planetShortName(pl: Planet): string {
+  const stripped = pl.pl_name.replace(hostname.value, '').trim()
+  return stripped || pl.pl_name
+}
+
+function mintClaimUrl(pl: Planet, coord: string, moonIdx?: number): string {
+  const p = new URLSearchParams({ host: hostname.value, planet: pl.pl_name, coord })
+  if (moonIdx !== undefined) p.set('moon', String(moonIdx))
+  return `/mint?${p.toString()}`
+}
+
+function navigateToPlanet(pl: Planet) {
+  void router.push(`/surface/${encodeURIComponent(hostname.value)}/${encodeURIComponent(pl.pl_name)}`)
+}
 
 /** Temperature zone classification */
 const planetZone = computed((): { label: string; cls: string } => {
@@ -758,6 +938,26 @@ const moonPanelCount = computed(() => {
   // moonMeshes is module-level; fall back to archive number if scene not ready
   return moonMeshes.length || (system.value?.sy_mnum ?? 0)
 })
+
+// ── Climate profile ───────────────────────────────────────────────────────────
+
+const useFahrenheit = usesFahrenheit()
+
+const climateProfile = computed(() => {
+  if (!planet.value || !system.value) return null
+  return buildClimateProfile(planet.value, system.value)
+})
+
+/** Format a Kelvin value in the user's preferred unit. */
+function fmtK(k: number | null | undefined): string {
+  if (k == null) return '—'
+  return formatTempK(k, useFahrenheit)
+}
+
+/** Format a K range as min→max in preferred unit. */
+function fmtRng(lo: number | null, hi: number | null): string {
+  return formatRangeK(lo, hi, useFahrenheit) ?? '—'
+}
 
 // ── Transit system ────────────────────────────────────────────────────────────
 
@@ -1138,13 +1338,14 @@ const legend = computed(() => {
 
 // ── Three.js refs ─────────────────────────────────────────────────────────────
 
-const canvas = ref<HTMLCanvasElement | null>(null)
-
-let renderer:      THREE.WebGLRenderer
-let scene:         THREE.Scene
-let camera:        THREE.PerspectiveCamera
-let controls:      OrbitControls
-let animId:        number
+// canvas ref removed — canvas is in MainLayout
+const viz = useVizRenderer()
+let renderer: THREE.WebGLRenderer     | null = null
+let scene:    THREE.Scene             | null = null
+let camera:   THREE.PerspectiveCamera | null = null
+let controls: OrbitControls           | null = null
+let _stopTick: (() => void) | null = null
+const pageGroup = new THREE.Group()
 let clockRef:      THREE.Clock
 
 let hostStarMesh:  THREE.Mesh | null = null
@@ -1179,36 +1380,39 @@ let moonMeshes: Array<{ mesh: THREE.Mesh; glow: THREE.Mesh; info: MoonInfo }> = 
 // ── Scene initialisation ──────────────────────────────────────────────────────
 
 function initScene() {
-  if (!canvas.value) return
+  renderer = viz.renderer
+  scene    = viz.scene
+  camera   = viz.camera
+  controls = viz.controls
+  if (!renderer || !scene || !camera || !controls) return
 
-  renderer = new THREE.WebGLRenderer({ canvas: canvas.value, antialias: true, alpha: false })
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
-  renderer.setSize(window.innerWidth, window.innerHeight)
-  renderer.toneMapping        = THREE.ACESFilmicToneMapping
-  renderer.toneMappingExposure = 0.9
-
-  scene = new THREE.Scene()
   const eqt     = planet.value?.pl_eqt ?? null
   const palette = surfacePaletteFor(eqt)
+
   scene.background = new THREE.Color(0x020408)
   scene.fog        = new THREE.FogExp2(palette.fog ?? new THREE.Color(0x020408), palette.fogDensity)
 
-  camera = new THREE.PerspectiveCamera(80, window.innerWidth / window.innerHeight, 0.1, 2000)
+  camera.fov  = 80
+  camera.near = 0.1
+  camera.far  = 2000
+  camera.aspect = window.innerWidth / (window.innerHeight - 44)
   camera.position.set(0, 4, 130)
+  camera.updateProjectionMatrix()
 
-  controls = new OrbitControls(camera, renderer.domElement)
-  controls.target.set(0, 2, 0)   // target at eye level so looking forward is the default
-  controls.enablePan           = true
-  controls.screenSpacePanning  = false   // pan moves camera along world XZ, not screen plane
-  controls.panSpeed            = 0.6
-  controls.enableZoom          = true
-  controls.minDistance         = 8
-  controls.maxDistance         = 500
-  controls.minPolarAngle       = 0.10   // can look almost straight up at sky
-  controls.maxPolarAngle       = Math.PI * 0.54   // ~97° — camera stays near-horizontal, never underground
-  controls.rotateSpeed         = 0.4
+  controls.target.set(0, 2, 0)
+  controls.enablePan          = true
+  controls.screenSpacePanning = false
+  controls.panSpeed           = 0.6
+  controls.enableZoom         = true
+  controls.minDistance        = 8
+  controls.maxDistance        = 500
+  controls.minPolarAngle      = 0.10
+  controls.maxPolarAngle      = Math.PI * 0.54
+  controls.rotateSpeed        = 0.4
+  controls.zoomToCursor       = false
   controls.update()
 
+  scene.add(pageGroup)
   clockRef  = new THREE.Clock()
   raycaster = new THREE.Raycaster()
   raycaster.params.Points = { threshold: 2 }
@@ -1224,7 +1428,6 @@ function initScene() {
   applyLocalTime(localTimeDeg.value)
 
   sceneReady.value = true
-  startLoop()
 }
 
 // ── Sky builders ──────────────────────────────────────────────────────────────
@@ -1273,46 +1476,64 @@ function addStarField() {
     })))
   }
 
-  // ── Layer 2: Catalog stars from NASA Exoplanet Archive ───────────────────
-  // The Kepler mission observed a single 10°×12° patch (RA 280–305°,
-  // Dec 36–52°) for 4 years, producing ~3,000 confirmed hosts crammed into
-  // that region.  Showing all of them creates a visible rectangular "waffle"
-  // cluster against the rest of the sky.  Subsample that field to ~25% so it
-  // no longer looks like a survey artefact, and add sub-degree jitter to all
-  // catalog stars to break any coordinate-quantisation regularity.
+  // ── Layer 2: Catalog stars from NASA Exoplanet Archive — with parallax ────
+  // Stars are placed in their actual 3D galactic positions (parsec space)
+  // relative to the observer's exoplanet, so every settlement sees a genuinely
+  // different sky: nearby stars shift dramatically, distant stars are fixed.
+  //
+  // Kepler field (RA 278–308°, Dec 35–53°): ~3,000 confirmed hosts crammed into
+  // a 10°×12° patch produce a visible rectangular "waffle" from Earth's vantage.
+  // Subsampled to ~12% (1-in-8) and given ±0.6° jitter; parallax dissolves the
+  // pattern naturally when viewed from any non-Solar exoplanet.
   {
     const positions: number[] = [], colors: number[] = [], sizes: number[] = []
     const seenHosts = new Set<string>()
+
+    // Observer's 3D galactic position in parsec space (Earth = origin)
+    const obsRA   = system.value?.ra  ?? 0
+    const obsDec  = system.value?.dec ?? 0
+    const obsDist = system.value?.sy_dist ?? 0
+    const obsPc   = raDecToVec3(obsRA, obsDec, obsDist)  // actual parsecs from Earth
 
     for (const p of galaxyStore.planets) {
       if (p.hostname === hostname.value) continue
       if (seenHosts.has(p.hostname)) continue
       seenHosts.add(p.hostname)
 
-      // Kepler primary field detection
+      // Kepler primary field (Earth RA/Dec — subsample before parallax transform)
       const inKeplerField = p.ra > 278 && p.ra < 308 && p.dec > 35 && p.dec < 53
-
-      // Subsample: keep 100% outside Kepler, ~25% inside
       if (inKeplerField) {
-        const h = p.hostname.split('').reduce((a, c) => a * 31 + c.charCodeAt(0), 0)
-        if ((h & 3) !== 0) continue   // retain only hash mod 4 === 0
+        const h = p.hostname.split('').reduce((a, c) => (a * 31 + c.charCodeAt(0)) | 0, 0)
+        if ((h & 7) !== 0) continue   // retain ~12% (1-in-8) of Kepler hosts
       }
 
-      // Sub-degree angular jitter breaks coordinate-quantisation grid artefacts
-      // without meaningfully misplacing any star (0.25° max shift)
+      // ── Parallax: compute apparent sky direction from observer's position ──
+      const starDist = p.sy_dist ?? 1000
+      const starPc   = raDecToVec3(p.ra, p.dec, starDist)
+      const relVec   = new THREE.Vector3().subVectors(starPc, obsPc)
+      const distToStar = relVec.length()
+      if (distToStar < 0.5) continue  // skip the observer's own star
+      relVec.normalize()
+
+      // Jitter in angular space to break any coordinate-quantisation grid.
+      // Applied to the sky-sphere direction, not the parsec position.
       const jitterSeed = p.hostname.split('').reduce((a, c) => a + c.charCodeAt(0), 0)
       const jRng = mulberry32(jitterSeed)
-      const jRa  = p.ra  + (jRng() - 0.5) * 0.50
-      const jDec = p.dec + (jRng() - 0.5) * 0.35
+      const perpX = new THREE.Vector3(relVec.y, -relVec.x, 0).normalize()
+      const perpY = new THREE.Vector3().crossVectors(relVec, perpX)
+      const jitterAng = inKeplerField ? 0.012 : 0.006   // radians ≈ 0.7° / 0.34°
+      relVec.addScaledVector(perpX, (jRng() - 0.5) * jitterAng)
+              .addScaledVector(perpY, (jRng() - 0.5) * jitterAng)
+              .normalize()
 
-      const vec = raDecToVec3(jRa, jDec, 900)
-      positions.push(vec.x, vec.y, vec.z)
+      const skyPos = relVec.multiplyScalar(900)
+      positions.push(skyPos.x, skyPos.y, skyPos.z)
 
-      const col  = starColorFromTeff(p.st_teff)
+      const col = starColorFromTeff(p.st_teff)
       colors.push(col.r, col.g, col.b)
 
-      const dist = p.sy_dist ?? 1000
-      sizes.push(Math.max(0.4, 2.4 - Math.log10(dist + 1) * 0.6))
+      // Apparent size from distance to observer (not Earth distance)
+      sizes.push(Math.max(0.4, 2.4 - Math.log10(distToStar + 1) * 0.6))
     }
 
     const geo = new THREE.BufferGeometry()
@@ -2006,11 +2227,9 @@ function applyLocalTime(deg: number) {
 
 // ── Animation loop ────────────────────────────────────────────────────────────
 
-function startLoop() {
-  const tick = () => {
-    animId = requestAnimationFrame(tick)
+function surfaceTick(t: number) {
+  {
     const dt = clockRef.getDelta()
-    const t  = performance.now() / 1000
 
     if (!isRealTime.value && animating.value && animSpeed.value > 0) {
       localTimeDeg.value = (localTimeDeg.value + dt * 20 * animSpeed.value) % 360
@@ -2098,9 +2317,7 @@ function startLoop() {
     }
 
     defenderNav.value?.redraw(buildSkyDefenderData())
-    renderer.render(scene, camera)
   }
-  tick()
 }
 
 // ── Look modes ────────────────────────────────────────────────────────────────
@@ -2129,9 +2346,9 @@ function setLookMode(mode: string) {
 // ── Raycasting ────────────────────────────────────────────────────────────────
 
 function onMouseMove(e: MouseEvent) {
-  const el = canvas.value!
-  mouseNDC.x =  (e.clientX / el.clientWidth)  * 2 - 1
-  mouseNDC.y = -(e.clientY / el.clientHeight) * 2 + 1
+  const w = window.innerWidth, h = window.innerHeight - 44
+  mouseNDC.x =  (e.clientX / w) * 2 - 1
+  mouseNDC.y = -((e.clientY - 44) / h) * 2 + 1
   tooltipStyle.value = { left: (e.clientX + 16) + 'px', top: (e.clientY - 8) + 'px' }
 
   raycaster.setFromCamera(mouseNDC, camera)
@@ -2147,12 +2364,7 @@ function onCanvasClick() {
 
 // ── Resize ────────────────────────────────────────────────────────────────────
 
-function onResize() {
-  if (!renderer || !camera) return
-  camera.aspect = window.innerWidth / window.innerHeight
-  camera.updateProjectionMatrix()
-  renderer.setSize(window.innerWidth, window.innerHeight)
-}
+// onResize handled globally by MainLayout via viz.resize()
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -2268,16 +2480,22 @@ function buildSkyDefenderData(): DefenderNavData {
   }
 }
 
-/** Context zoom from surface: route to galaxy view with this system highlighted,
- *  and pass a query param so GalaxyPage can immediately trigger onContextZoom. */
-function onContextZoom() {
-  void router.push({
-    path: '/galaxy',
-    query: {
-      focusHost:   hostname.value,
-      contextView: 'true',
-    },
+/** Return to the galaxy view for this system, using the portal animation. */
+function goBackToGalaxy() {
+  const srcColor = system.value
+    ? '#' + starColorFromTeff(system.value.st_teff).getHexString()
+    : undefined
+  portalStore.openPortal({
+    label:       hostname.value,
+    route:       `/galaxy?focusHost=${encodeURIComponent(hostname.value)}&contextView=true`,
+    hostname:    hostname.value,
+    sourceColor: srcColor,
   })
+}
+
+/** Context zoom from surface: portal to galaxy view with this system highlighted. */
+function onContextZoom() {
+  goBackToGalaxy()
 }
 
 function onDefenderFlyTo(target: DefenderTarget) {
@@ -2354,22 +2572,198 @@ onMounted(async () => {
     isMoon:      isMoonView.value,
   })
 
-  window.addEventListener('resize', onResize)
   initScene()
+  _stopTick = viz.addTick(surfaceTick)
 })
 
 onUnmounted(() => {
   if (clockInterval !== null) clearInterval(clockInterval)
-  cancelAnimationFrame(animId)
-  window.removeEventListener('resize', onResize)
-  renderer?.dispose()
-  controls?.dispose()
-  soulOrbs    = []
-  moonMeshes  = []
-  hitTargets  = []
-  waterMesh   = null
-  pyramidLight = null
+  _stopTick?.(); _stopTick = null
+
+  disposeScene(pageGroup)
+  scene?.remove(pageGroup)
+  if (scene) { scene.background = null; scene.fog = null }
+
+  soulOrbs        = []
+  moonMeshes      = []
+  hitTargets      = []
+  waterMesh       = null
+  pyramidLight    = null
+  hostStarMesh    = null
+  hostStarGlow    = null
+  hostStarLight   = null
+  settlementGroup = null
+  stoneCircleGlow = null
 })
+
+// ── Location mini-map panel ────────────────────────────────────────────────
+const locPanelOpen = ref(true)
+const locTab       = ref<'galaxy' | 'cosmic'>('galaxy')
+const galCanvas    = ref<HTMLCanvasElement | null>(null)
+const cosmCanvas   = ref<HTMLCanvasElement | null>(null)
+
+function setLocTab(tab: 'galaxy' | 'cosmic') {
+  locTab.value = tab
+  void nextTick(() => { if (tab === 'galaxy') drawGalaxyMiniMap(); else drawCosmicMiniMap() })
+}
+
+function raDecToGalactic(ra: number, dec: number) {
+  const D2R = Math.PI / 180
+  const aNGP = 192.85948 * D2R, dNGP = 27.12825 * D2R, lNCP = 122.93192 * D2R
+  const aR = ra * D2R, dR = dec * D2R
+  const sinB = Math.sin(dR)*Math.sin(dNGP) + Math.cos(dR)*Math.cos(dNGP)*Math.cos(aR - aNGP)
+  const b    = Math.asin(Math.max(-1, Math.min(1, sinB)))
+  const y    = Math.cos(dR)*Math.sin(aR - aNGP)
+  const x    = Math.sin(dR)*Math.cos(dNGP) - Math.cos(dR)*Math.sin(dNGP)*Math.cos(aR - aNGP)
+  const l    = ((lNCP - Math.atan2(y, x)) * 180/Math.PI % 360 + 360) % 360
+  return { l, b: b * 180/Math.PI }
+}
+
+function galToEquatorial(l: number, b: number): { ra: number; dec: number } {
+  const D2R = Math.PI / 180
+  const aNGP = 192.85948 * D2R, dNGP = 27.12825 * D2R, lNCP = 122.93192 * D2R
+  const lR = l * D2R, bR = b * D2R
+  const sinDec = Math.sin(bR)*Math.sin(dNGP) + Math.cos(bR)*Math.cos(dNGP)*Math.cos(lNCP - lR)
+  const dec    = Math.asin(Math.max(-1, Math.min(1, sinDec))) * 180/Math.PI
+  const y2     = Math.cos(bR)*Math.sin(lNCP - lR)
+  const x2     = Math.sin(bR)*Math.cos(dNGP) - Math.cos(bR)*Math.sin(dNGP)*Math.cos(lNCP - lR)
+  const ra     = ((aNGP + Math.atan2(y2, x2)) * 180/Math.PI % 360 + 360) % 360
+  return { ra, dec }
+}
+
+function drawGalaxyMiniMap() {
+  const cv = galCanvas.value
+  if (!cv || !system.value) return
+  const ctx = cv.getContext('2d')!
+  const W = cv.width, H = cv.height
+  ctx.clearRect(0, 0, W, H)
+  ctx.fillStyle = '#060b14'; ctx.fillRect(0, 0, W, H)
+
+  const { l, b } = raDecToGalactic(system.value.ra, system.value.dec)
+  const distPc   = system.value.sy_dist ?? 100
+  const D2R      = Math.PI / 180
+  const cosB     = Math.cos(b * D2R)
+  const sysX     = distPc * cosB * Math.cos(l * D2R)
+  const sysY     = distPc * cosB * Math.sin(l * D2R)
+  const scale    = Math.max(distPc * 1.6, 400)
+  const [cx, cy] = [W / 2, H / 2]
+  const px       = (v: number) => cx + (v / scale) * (cx - 14)
+  const py       = (v: number) => cy - (v / scale) * (cy - 8)
+
+  // Faint disk background
+  const grd = ctx.createRadialGradient(cx, cy, 4, cx, cy, cx - 8)
+  grd.addColorStop(0,   'rgba(160,140,255,0.13)')
+  grd.addColorStop(0.5, 'rgba(60,80,180,0.07)')
+  grd.addColorStop(1,   'rgba(8,14,40,0.0)')
+  ctx.beginPath(); ctx.ellipse(cx, cy, cx-8, cy-6, 0, 0, Math.PI*2)
+  ctx.fillStyle = grd; ctx.fill()
+
+  // GC dot or direction arrow
+  const GC_DIST = 8178
+  const gcX = px(GC_DIST), gcY = py(0)
+  if (gcX >= 2 && gcX <= W-2 && gcY >= 2 && gcY <= H-2) {
+    ctx.beginPath(); ctx.arc(gcX, gcY, 3, 0, Math.PI*2)
+    ctx.fillStyle = 'rgba(255,148,48,0.65)'; ctx.fill()
+    ctx.fillStyle = 'rgba(255,128,38,0.52)'; ctx.font = '6px monospace'
+    ctx.fillText('GC', gcX+4, gcY+3)
+  } else {
+    const ang = Math.atan2(gcY - cy, gcX - cx)
+    const arX = cx + Math.cos(ang) * (cx - 16), arY = cy + Math.sin(ang) * (cy - 10)
+    ctx.beginPath(); ctx.arc(arX, arY, 2, 0, Math.PI*2)
+    ctx.fillStyle = 'rgba(255,128,38,0.42)'; ctx.fill()
+    ctx.fillStyle = 'rgba(255,118,28,0.35)'; ctx.font = '6px monospace'
+    ctx.fillText('GC', arX + (arX > cx ? -14 : 3), arY - 3)
+  }
+
+  // Sol
+  ctx.beginPath(); ctx.arc(cx, cy, 3, 0, Math.PI*2)
+  ctx.fillStyle = '#ffe87a'; ctx.fill()
+  ctx.fillStyle = 'rgba(255,230,120,0.48)'; ctx.font = '6px monospace'
+  ctx.fillText('Sol', cx+4, cy-2)
+
+  // Dashed line Sol → system
+  ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(px(sysX), py(sysY))
+  ctx.strokeStyle = 'rgba(0,170,210,0.20)'; ctx.lineWidth = 0.8
+  ctx.setLineDash([3,3]); ctx.stroke(); ctx.setLineDash([])
+
+  // System dot
+  const sdx = px(sysX), sdy = py(sysY)
+  ctx.beginPath(); ctx.arc(sdx, sdy, 5, 0, Math.PI*2)
+  ctx.strokeStyle = 'rgba(0,210,255,0.35)'; ctx.lineWidth = 1; ctx.stroke()
+  ctx.beginPath(); ctx.arc(sdx, sdy, 2.5, 0, Math.PI*2)
+  ctx.fillStyle = '#00ddff'; ctx.fill()
+
+  // Labels
+  ctx.fillStyle = 'rgba(0,188,218,0.62)'; ctx.font = '6px monospace'
+  ctx.fillText(distPc < 1000 ? `${distPc.toFixed(0)} pc` : `${(distPc/1000).toFixed(1)} kpc`, 3, H-3)
+  ctx.fillStyle = 'rgba(110,145,190,0.42)'; ctx.font = '6px monospace'
+  ctx.fillText(`l=${l.toFixed(0)}° b=${b >= 0?'+':''}${b.toFixed(0)}°`, W-72, H-3)
+}
+
+function drawCosmicMiniMap() {
+  const cv = cosmCanvas.value
+  if (!cv || !system.value) return
+  const ctx = cv.getContext('2d')!
+  const W = cv.width, H = cv.height
+  ctx.clearRect(0, 0, W, H)
+  ctx.fillStyle = '#060b14'; ctx.fillRect(0, 0, W, H)
+
+  // Grid
+  ctx.strokeStyle = 'rgba(28,52,88,0.52)'; ctx.lineWidth = 0.5
+  for (let r = 0; r <= 360; r += 60) {
+    const x = (r/360)*W; ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke()
+  }
+  for (let d = -60; d <= 60; d += 30) {
+    const y = ((90-d)/180)*H; ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke()
+  }
+  // Equator
+  ctx.strokeStyle = 'rgba(45,85,145,0.48)'; ctx.lineWidth = 0.8
+  const eq = (90/180)*H; ctx.beginPath(); ctx.moveTo(0,eq); ctx.lineTo(W,eq); ctx.stroke()
+
+  // Galactic plane arc (b=0 traced in equatorial)
+  ctx.strokeStyle = 'rgba(195,152,55,0.26)'; ctx.lineWidth = 1
+  ctx.beginPath()
+  let prevRaGp = -999
+  for (let li = 0; li <= 360; li += 2) {
+    const { ra: gRa, dec: gDec } = galToEquatorial(li, 0)
+    const gx = (gRa/360)*W, gy = ((90-gDec)/180)*H
+    if (Math.abs(gRa - prevRaGp) > 180) { ctx.stroke(); ctx.beginPath(); ctx.moveTo(gx, gy) }
+    else if (li === 0) ctx.moveTo(gx, gy)
+    else ctx.lineTo(gx, gy)
+    prevRaGp = gRa
+  }
+  ctx.stroke()
+
+  // System dot
+  const ra = system.value.ra, dec = system.value.dec
+  const sx = (ra/360)*W, sy = ((90-dec)/180)*H
+  ctx.beginPath(); ctx.arc(sx, sy, 5, 0, Math.PI*2)
+  ctx.strokeStyle = 'rgba(0,210,255,0.35)'; ctx.lineWidth = 1; ctx.stroke()
+  ctx.beginPath(); ctx.arc(sx, sy, 2.5, 0, Math.PI*2)
+  ctx.fillStyle = '#00ddff'; ctx.fill()
+
+  // Axis labels
+  ctx.fillStyle = 'rgba(55,95,145,0.58)'; ctx.font = '6px monospace'
+  ctx.fillText('0h', 2, 8); ctx.fillText('12h', W/2-8, 8)
+  ctx.fillStyle = 'rgba(0,182,212,0.62)'; ctx.font = '6px monospace'
+  ctx.fillText(`${(ra/15).toFixed(1)}h  ${dec>=0?'+':''}${dec.toFixed(1)}°`, 3, H-3)
+}
+
+function goToCosmic() {
+  void router.push('/cosmic')
+}
+
+watch(
+  [system, locPanelOpen, locTab, galCanvas, cosmCanvas],
+  () => {
+    if (!locPanelOpen.value || !system.value) return
+    void nextTick(() => {
+      if (locTab.value === 'galaxy') drawGalaxyMiniMap()
+      else drawCosmicMiniMap()
+    })
+  },
+  { immediate: false },
+)
 
 watch([hostname, planetName], async () => {
   cancelAnimationFrame(animId)
@@ -2541,6 +2935,166 @@ watch([hostname, planetName], async () => {
   color: rgba(70, 120, 155, 0.55);
   flex-shrink: 0;
 }
+
+/* ── Climate estimates section ───────────────────────────────── */
+.pip-section--climate { background: rgba(0, 18, 40, 0.40); }
+
+.pip-v--mono  { font-family: 'Courier New', monospace; font-size: 8px; max-width: 58%; white-space: normal; text-align: right; line-height: 1.35; }
+.pip-v--warm  { color: rgba(255, 160, 80, 0.90); }
+.pip-v--cool  { color: rgba(130, 200, 240, 0.85); }
+
+.pip-climate-note {
+  font-family: 'Courier New', monospace;
+  font-size: 7px;
+  color: rgba(70, 120, 155, 0.65);
+  line-height: 1.45;
+  margin: 3px 0 2px;
+  padding: 2px 0;
+  border-top: 1px solid rgba(0, 50, 90, 0.18);
+}
+.pip-climate-note--binary {
+  color: rgba(255, 210, 100, 0.70);
+  border-top-color: rgba(200, 150, 40, 0.20);
+}
+
+/* ── Primary claim button (THIS PLANET) ──────────────────────── */
+.pip-claim-primary {
+  display: block;
+  width: 100%;
+  margin-top: 7px;
+  padding: 5px 0;
+  font-family: 'Courier New', monospace;
+  font-size: 9px;
+  letter-spacing: 0.10em;
+  color: rgba(0, 200, 230, 0.85);
+  background: rgba(0, 50, 90, 0.45);
+  border: 1px solid rgba(0, 160, 210, 0.35);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.14s, color 0.14s, border-color 0.14s;
+  text-align: center;
+}
+.pip-claim-primary:hover {
+  background: rgba(0, 90, 140, 0.60);
+  color: #00e5ff;
+  border-color: rgba(0, 200, 255, 0.55);
+}
+.pip-claim-primary--manage {
+  color: rgba(100, 220, 180, 0.90);
+  background: rgba(0, 60, 50, 0.45);
+  border-color: rgba(60, 200, 160, 0.38);
+}
+.pip-claim-primary--manage:hover {
+  background: rgba(0, 100, 80, 0.55);
+  color: #00ffcc;
+  border-color: rgba(80, 240, 190, 0.55);
+}
+
+/* ── Planet chip grid ─────────────────────────────────────────── */
+.pip-section--chips { padding-bottom: 8px; }
+
+.pip-chips-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+  margin-top: 5px;
+}
+
+.pip-chip {
+  background: rgba(0, 20, 50, 0.50);
+  border: 1px solid rgba(0, 100, 160, 0.22);
+  border-radius: 4px;
+  padding: 5px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.pip-chip:not(.pip-chip--here) .ppc-head { cursor: pointer; }
+.pip-chip:not(.pip-chip--here):hover { border-color: rgba(0, 180, 220, 0.40); }
+.pip-chip--here {
+  border-color: rgba(0, 200, 255, 0.35);
+  background: rgba(0, 40, 70, 0.55);
+}
+
+.ppc-head { display: flex; align-items: center; gap: 4px; }
+
+.ppc-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+
+.ppc-name {
+  font-size: 8px;
+  color: rgba(180, 210, 235, 0.82);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+}
+
+.ppc-here { font-size: 8px; color: rgba(0, 200, 255, 0.65); }
+
+.ppc-au { font-size: 7px; color: rgba(70, 115, 150, 0.55); }
+
+.ppc-claim {
+  width: 100%;
+  font-family: 'Courier New', monospace;
+  font-size: 7px;
+  letter-spacing: 0.10em;
+  color: rgba(0, 180, 220, 0.75);
+  background: rgba(0, 60, 100, 0.35);
+  border: 1px solid rgba(0, 140, 190, 0.30);
+  border-radius: 3px;
+  padding: 2px 0;
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.12s, color 0.12s;
+}
+.ppc-claim:hover { background: rgba(0, 100, 160, 0.50); color: #00e5ff; }
+.ppc-claim--has  { color: rgba(80, 210, 170, 0.80); border-color: rgba(60,180,140,0.30); }
+.ppc-claim--has:hover { background: rgba(0, 90, 70, 0.50); color: #00ffcc; }
+
+/* ── Moon pulldown ─────────────────────────────────────────────── */
+.pip-moon-section { padding-bottom: 0; }
+
+.pip-moon-header {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  user-select: none;
+  padding: 2px 0 4px;
+}
+.pip-moon-header:hover .pip-section-label { color: rgba(0, 200, 240, 0.70); }
+
+.pip-moon-list { padding-top: 2px; }
+
+.pip-moon-entry {
+  padding: 5px 0;
+  border-top: 1px solid rgba(0, 50, 90, 0.22);
+}
+
+.pme-label {
+  font-size: 8px;
+  color: rgba(160, 200, 230, 0.75);
+  margin-bottom: 4px;
+}
+.pme-of { font-size: 7px; color: rgba(80, 120, 155, 0.55); margin-left: 4px; }
+
+.pme-claims { display: flex; gap: 3px; }
+
+.pme-claim {
+  flex: 1;
+  font-family: 'Courier New', monospace;
+  font-size: 7px;
+  letter-spacing: 0.04em;
+  padding: 2px 2px;
+  border-radius: 3px;
+  border: 1px solid;
+  cursor: pointer;
+  text-align: center;
+  transition: filter 0.12s;
+}
+.pme-claim--l4 { color: rgba(80, 220, 130, 0.85); border-color: rgba(60, 200, 100, 0.30); background: rgba(0, 70, 35, 0.25); }
+.pme-claim--l5 { color: rgba(160, 130, 210, 0.85); border-color: rgba(140, 100, 190, 0.30); background: rgba(40, 0, 80, 0.25); }
+.pme-claim--l6 { color: rgba(200, 160, 80, 0.85);  border-color: rgba(180, 130, 50, 0.30);  background: rgba(60, 30, 0, 0.25); }
+.pme-claim:hover { filter: brightness(1.35); }
 
 /* Expand transition */
 .pip-expand-enter-active { transition: max-height 0.22s ease, opacity 0.18s; max-height: 70vh; }
@@ -2982,4 +3536,100 @@ watch([hostname, planetName], async () => {
 .xray-fade-leave-active { transition: opacity 0.4s ease; }
 .xray-fade-enter-from,
 .xray-fade-leave-to     { opacity: 0; }
+
+/* ── Location panel ─────────────────────────────────────────────── */
+
+.loc-panel {
+  position: absolute;
+  top: 58px;
+  right: 12px;
+  width: 184px;
+  background: rgba(1, 5, 18, 0.90);
+  border: 1px solid rgba(0, 140, 190, 0.20);
+  border-radius: 6px;
+  backdrop-filter: blur(8px);
+  font-family: 'Courier New', monospace;
+  z-index: 5;
+  overflow: hidden;
+}
+
+.loc-header {
+  display: flex;
+  align-items: center;
+  padding: 5px 8px;
+  cursor: pointer;
+  user-select: none;
+  border-bottom: 1px solid rgba(0, 120, 170, 0.10);
+  transition: background 0.15s;
+}
+.loc-header:hover { background: rgba(0, 140, 200, 0.07); }
+
+.loc-title {
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  color: rgba(0, 190, 230, 0.75);
+}
+
+.loc-toggle {
+  font-size: 8px;
+  color: rgba(80, 130, 170, 0.6);
+}
+
+.loc-body { overflow: hidden; }
+
+.loc-tabs {
+  display: flex;
+  border-bottom: 1px solid rgba(0, 100, 150, 0.15);
+}
+
+.loc-tab {
+  flex: 1;
+  padding: 4px 0;
+  background: none;
+  border: none;
+  font-family: 'Courier New', monospace;
+  font-size: 8px;
+  letter-spacing: 0.10em;
+  color: rgba(80, 130, 170, 0.65);
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+}
+.loc-tab:hover  { color: rgba(0, 200, 240, 0.85); background: rgba(0,140,200,0.05); }
+.loc-tab--active {
+  color: rgba(0, 210, 255, 0.95);
+  background: rgba(0, 120, 180, 0.12);
+  border-bottom: 1px solid rgba(0, 200, 250, 0.35);
+}
+
+.loc-canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.loc-nav {
+  padding: 5px 8px;
+  border-top: 1px solid rgba(0, 100, 150, 0.12);
+}
+
+.loc-nav-btn {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 3px 6px;
+  background: rgba(0, 120, 180, 0.10);
+  border: 1px solid rgba(0, 160, 210, 0.20);
+  border-radius: 3px;
+  font-family: 'Courier New', monospace;
+  font-size: 8px;
+  letter-spacing: 0.08em;
+  color: rgba(0, 190, 230, 0.80);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.loc-nav-btn:hover {
+  background: rgba(0, 140, 200, 0.18);
+  border-color: rgba(0, 200, 250, 0.40);
+  color: rgba(0, 220, 255, 1);
+}
 </style>

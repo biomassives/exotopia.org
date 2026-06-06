@@ -96,6 +96,7 @@ export const CELO_MAINNET: EvmChain = {
 // executeMint() is called (dry-run still works with any placeholder).
 
 export interface ContractAddresses {
+  exolocNft?:       string   // Exolocation Deed ERC-721 (Polygon Amoy primary)
   barsNft?:         string   // $BARS ERC-721
   wqCertNft?:       string   // Water Quality Certification ERC-721
   healthCardNft?:   string   // Health Card ID ERC-721
@@ -103,15 +104,26 @@ export interface ContractAddresses {
   ecoOpsToken?:     string   // Eco-ops Participation Token ERC-721 (Celo)
 }
 
+// ── Read testnet contract addresses from Vite env vars ────────────────────────
+// Set these in .env.local after deploying via /contracts/scripts/deploy.ts.
+// PLACEHOLDER strings are detected as "not yet deployed" in mint-evm.ts.
+
+const _env = (import.meta as any).env ?? {}
+function _addr(key: string): string {
+  const v = (_env[key] ?? '') as string
+  return v.startsWith('0x') && v.length === 42 ? v : `PLACEHOLDER — set ${key} in .env.local`
+}
+
 export const TESTNET_CONTRACTS: Record<string, ContractAddresses> = {
   amoy: {
-    barsNft:       'PLACEHOLDER — deploy via hardhat/deploy-bars.ts',
-    wqCertNft:     'PLACEHOLDER — deploy via hardhat/deploy-wqcert.ts',
-    healthCardNft: 'PLACEHOLDER — deploy via hardhat/deploy-healthcard.ts',
+    exolocNft:     _addr('VITE_AMOY_EXOLOC_CONTRACT'),
+    barsNft:       _addr('VITE_AMOY_BARS_CONTRACT'),
+    wqCertNft:     _addr('VITE_AMOY_WQCERT_CONTRACT'),
+    healthCardNft: _addr('VITE_AMOY_HEALTHCARD_CONTRACT'),
   },
   alfajores: {
-    communityBadge: 'PLACEHOLDER — deploy via hardhat/deploy-community.ts',
-    ecoOpsToken:    'PLACEHOLDER — deploy via hardhat/deploy-ecoop.ts',
+    communityBadge: _addr('VITE_ALFAJORES_BADGE_CONTRACT'),
+    ecoOpsToken:    _addr('VITE_ALFAJORES_ECOOP_CONTRACT'),
   },
 }
 

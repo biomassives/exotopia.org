@@ -21,9 +21,47 @@
  *     function safeMint(address to, string memory uri) public
  */
 
-import { BrowserProvider, Contract, parseEther } from 'ethers'
+import { BrowserProvider, Contract } from 'ethers'
 import type { EvmChain } from './chains'
 import type { Erc721Metadata } from './erc721-metadata'
+
+// ── Pinata IPFS upload ────────────────────────────────────────────────────────
+
+function pinataJwt(): string {
+  return ((import.meta as any).env?.VITE_PINATA_JWT ?? '') as string
+}
+
+/**
+ * Upload metadata JSON to Pinata IPFS and return `ipfs://<CID>`.
+ * Throws if the JWT is missing or the upload fails.
+ */
+async function uploadToPinata(metadata: Erc721Metadata): Promise<string> {
+  const jwt = pinataJwt()
+  if (!jwt) throw new Error('VITE_PINATA_JWT is not set — add it to .env.local')
+
+  const res = await fetch('https://api.pinata.cloud/pinning/pinJSONToIPFS', {
+    method: 'POST',
+    headers: {
+      'Content-Type':  'application/json',
+      'Authorization': `Bearer ${jwt}`,
+    },
+    body: JSON.stringify({
+      pinataContent:  metadata,
+      pinataMetadata: { name: metadata.name },
+    }),
+  })
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText)
+    throw new Error(`Pinata upload failed (${res.status}): ${text}`)
+  }
+  const data = await res.json() as { IpfsHash: string }
+  return `ipfs://${data.IpfsHash}`
+}
+
+/** True if Pinata JWT is configured in this deployment. */
+export function hasPinata(): boolean {
+  return !!pinataJwt()
+}
 
 // ── Minimal ABI — only what MintPage needs ────────────────────────────────────
 
@@ -220,9 +258,14 @@ export async function executeMint(
     const signer   = await provider.getSigner()
     const to       = recipientAddress ?? signer.address
 
-    // TODO (next sprint): upload metadata JSON to Pinata here.
-    // For now, use a data URI for testnet dry validation.
-    const tokenURI = `data:application/json;base64,${btoa(JSON.stringify(metadata))}`
+    // Upload metadata: use Pinata when JWT is configured, else fall back to
+    // base64 data URI (fine for testnet; too large for mainnet).
+    let tokenURI: string
+    if (hasPinata()) {
+      tokenURI = await uploadToPinata(metadata)
+    } else {
+      tokenURI = `data:application/json;base64,${btoa(unescape(encodeURIComponent(JSON.stringify(metadata))))}`
+    }
 
     const contract = new Contract(contractAddress, ERC721_MINT_ABI, signer)
     const tx       = await contract.safeMint(to, tokenURI)

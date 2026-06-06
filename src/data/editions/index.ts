@@ -44,8 +44,9 @@ export interface Edition {
 // ── Edition registry ──────────────────────────────────────────────────────────
 // Import each edition's card set and register it here.
 
-import { EXTRAPOLATION_CARDS } from './extrapolation-edition'
-import { ANTI_AI_CARDS }       from './anti-ai-slop-drop'
+import { EXTRAPOLATION_CARDS }     from './extrapolation-edition'
+import { ANTI_AI_CARDS }           from './anti-ai-slop-drop'
+import { COSMIC_PHENOMENA_CARDS }  from './cosmic-phenomena'
 
 export const EDITIONS: Edition[] = [
   {
@@ -75,6 +76,20 @@ export const EDITIONS: Edition[] = [
     heroTo:      '#120c02',
     accentColor: '#ff6633',
     cards:       ANTI_AI_CARDS,
+  },
+  {
+    id: 3, slug: 'cosmic-phenomena',
+    name:        'Cosmic Phenomena',
+    tagline:     'Stardust, moonbeams, and the forces that shape everything.',
+    description: '5 cards celebrating the physical phenomena underlying the Exotopia universe — from the stellar nucleosynthesis that forged every atom to the quantum entanglement that defies classical space. The substrate beneath the settlement.',
+    year:        2026,
+    totalCards:  5,
+    idStart:     23,
+    status:      'live',
+    heroFrom:    '#04020c',
+    heroTo:      '#000408',
+    accentColor: '#00ddcc',
+    cards:       COSMIC_PHENOMENA_CARDS,
   },
 ]
 

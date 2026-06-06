@@ -24,6 +24,16 @@
 
       <span class="dn-sep">│</span>
 
+      <!-- ▲ GO UP — ascend one realm level (hidden in cosmic mode) -->
+      <button
+        v-if="props.mode !== 'cosmic'"
+        class="dn-ascend-btn"
+        @click="emit('ascendRealm')"
+        :title="props.mode === 'surface' ? 'Go up to star system view' : 'Go up to cosmic view'"
+      >▲ {{ props.mode === 'surface' ? 'SYSTEM' : 'COSMIC' }}</button>
+
+      <span class="dn-sep">│</span>
+
       <!-- ◄ PREV — return to saved camera position (shown by parent) -->
       <button
         v-if="props.showReturnBtn"
@@ -104,6 +114,8 @@ const emit = defineEmits<{
   contextZoom:     []
   /** User clicked ◄ PREV — parent should restore saved camera position */
   returnToPrev:    []
+  /** User clicked ▲ SYSTEM / ▲ COSMIC — parent should navigate one realm level up */
+  ascendRealm:     []
 }>()
 
 // ── View mode / time scrubber / event finder state ────────────────────────────
@@ -146,6 +158,20 @@ let autoFollowSuppressed = false
 let suppressTimer       = 0
 
 let drawT = 0
+
+// ── Strip zoom-into-dot portal animation (spec §6) ────────────────────────────
+// When the user clicks a cross-level destination, the strip zooms in toward the
+// clicked dot (0.28s), dims to black (0.10s), then fires the portalTo event.
+
+interface ZoomPortalAnim {
+  startT:  number                          // drawT when animation started
+  angle:   number                          // azimuth or orbit angle to center on
+  dest:    { label: string; route: string }
+}
+let zoomPortalAnim: ZoomPortalAnim | null = null
+
+// Last known system reference (stored from redraw data, used in onClick)
+let lastCurrentSystemRef: DefenderNavData['currentSystemRef'] = undefined
 
 interface HitRegion {
   x: number
@@ -703,6 +729,22 @@ function drawSurface(ctx: CanvasRenderingContext2D, data: NonNullable<DefenderNa
         ctx.moveTo(x, y - 5); ctx.lineTo(x - 4, y + 2); ctx.lineTo(x + 4, y + 2)
         ctx.closePath(); ctx.fill()
         break
+      case 'blackhole_station': {
+        // Event horizon: black core + pulsing purple accretion ring
+        ctx.fillStyle = '#000000'
+        ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2); ctx.fill()
+        const bhPulse = 0.35 + Math.sin(drawT * 2.2) * 0.35
+        ctx.globalAlpha = bhPulse
+        ctx.strokeStyle = '#cc55ff'
+        ctx.lineWidth = 1.5
+        ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI * 2); ctx.stroke()
+        ctx.globalAlpha = 0.18
+        ctx.strokeStyle = '#ff88ff'
+        ctx.lineWidth = 3
+        ctx.beginPath(); ctx.arc(x, y, 10, 0, Math.PI * 2); ctx.stroke()
+        ctx.globalAlpha = 1
+        break
+      }
       case 'gallery': {
         const gEntry = galleries.find(g => g.id === obj.galleryId)
         const col = gEntry ? GALLERY_COLORS[gEntry.galleryType] : 'rgba(140,200,255,0.9)'
@@ -736,10 +778,19 @@ function drawSurface(ctx: CanvasRenderingContext2D, data: NonNullable<DefenderNa
     }
 
     if (obj.type !== 'gallery') {
+      const ttype =
+        obj.type === 'planet'    ? 'planet' :
+        obj.type === 'moon'      ? 'moon'   :
+        obj.type === 'blackhole_station' ? 'blackhole_station' :
+        (obj.type === 'star' || obj.type === 'companion_tight' || obj.type === 'companion_wide' || obj.type === 'outer_companion') ? 'companion' :
+        'azimuth'
+      const tipAction =
+        obj.type === 'planet' || obj.type === 'moon' ? 'Click to transit surface' :
+        obj.type === 'blackhole_station' ? 'Click to enter station' : undefined
       hitRegions.push({
-        x, y, r: 10,
-        target: { type: obj.type === 'planet' ? 'planet' : obj.type === 'moon' ? 'moon' : obj.type === 'star' || obj.type === 'companion_tight' || obj.type === 'companion_wide' || obj.type === 'outer_companion' ? 'companion' : 'azimuth', id: obj.name, azimuth: obj.azimuth },
-        tip: { name: obj.name, type: obj.type, stat: `Az ${obj.azimuth.toFixed(1)}° Alt ${obj.altitude.toFixed(1)}°` },
+        x, y, r: obj.type === 'blackhole_station' ? 14 : 10,
+        target: { type: ttype, id: obj.name, azimuth: obj.azimuth },
+        tip: { name: obj.name, type: obj.type, stat: `Az ${obj.azimuth.toFixed(1)}° Alt ${obj.altitude.toFixed(1)}°`, action: tipAction },
       })
     }
   }
@@ -873,6 +924,9 @@ function redraw(data: DefenderNavData): void {
   // Rebuild hit regions each frame
   hitRegions = []
 
+  // Store system ref for use in onClick (planet surface transit routing)
+  lastCurrentSystemRef = data.currentSystemRef
+
   ctx.save()
   ctx.scale(DPR, DPR)
 
@@ -893,6 +947,35 @@ function redraw(data: DefenderNavData): void {
   // Earth↔System context inset — shown in system and surface modes
   if (data.currentSystemRef && (props.mode === 'system' || props.mode === 'surface')) {
     drawContextInset(ctx, data.currentSystemRef)
+  }
+
+  // ── Strip zoom-into-dot animation (spec §6) ───────────────────────────────
+  if (zoomPortalAnim) {
+    const elapsed = drawT - zoomPortalAnim.startT
+
+    if (elapsed < 0.28) {
+      // Phase 1: zoom in over 0.28s (ease-in-out)
+      const t    = elapsed / 0.28
+      const ease = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2
+      zoomTarget.value = 1 + (8 - 1) * ease
+      // Keep the clicked dot centered
+      const zoom     = zoomTarget.value
+      const centered = ((zoomPortalAnim.angle - 180 / zoom) + 3600) % 360
+      viewOffset     = viewOffset + (centered - viewOffset) * 0.35
+    } else if (elapsed < 0.38) {
+      // Phase 2: dim to black over 0.10s
+      zoomTarget.value = 8
+      const dimAlpha = (elapsed - 0.28) / 0.10
+      ctx.fillStyle = `rgba(0,0,0,${dimAlpha.toFixed(3)})`
+      ctx.fillRect(0, 0, W, H)
+    } else {
+      // Phase 3: fire portal, reset zoom
+      const dest = zoomPortalAnim.dest
+      zoomPortalAnim   = null
+      zoomTarget.value = 1
+      autoFollowSuppressed = false
+      emit('portalTo', dest)
+    }
   }
 
   ctx.restore()
@@ -1081,6 +1164,12 @@ function onMouseLeave() {
   tooltip.visible = false
 }
 
+function fireZoomPortal(angle: number, dest: { label: string; route: string }) {
+  autoFollowSuppressed = true
+  clearTimeout(suppressTimer)
+  zoomPortalAnim = { startT: drawT, angle, dest }
+}
+
 function onClick(e: MouseEvent) {
   const rect = navCanvas.value!.getBoundingClientRect()
   const mx = e.clientX - rect.left
@@ -1114,8 +1203,17 @@ function onClick(e: MouseEvent) {
       Object.assign(tooltip, { visible: true, x: Math.min(mx, W - 160), name: nearest.tip.name, type: nearest.tip.type, stat: nearest.tip.stat, warning: 'Gallery is locked', action: undefined })
       return
     }
-    const hostname = tgt.hostname ?? 'unknown'
-    emit('portalTo', { label: nearest.tip.name, route: `/gallery/${hostname}/${tgt.galleryId}` })
+    const hn = tgt.hostname ?? 'unknown'
+    fireZoomPortal(tgt.azimuth ?? 180, { label: nearest.tip.name, route: `/gallery/${hn}/${tgt.galleryId}` })
+  } else if (
+    (tgt.type === 'planet' || tgt.type === 'moon') &&
+    props.mode === 'surface' &&
+    lastCurrentSystemRef
+  ) {
+    // Transit to sibling planet or moon surface — strip zoom then portal
+    const host  = lastCurrentSystemRef.hostname
+    const route = `/surface/${encodeURIComponent(host)}/${encodeURIComponent(tgt.id)}`
+    fireZoomPortal(tgt.azimuth ?? 180, { label: tgt.id, route })
   } else {
     emit('flyTo', tgt)
   }
@@ -1274,6 +1372,29 @@ onUnmounted(() => {
   background: rgba(0, 100, 160, 0.30);
   color: #00e5ff;
   border-color: rgba(0, 220, 255, 0.55);
+}
+
+/* ── Ascend realm button ──────────────────────────────────────────── */
+
+.dn-ascend-btn {
+  background: rgba(0, 60, 80, 0.40);
+  border: 1px solid rgba(0, 200, 160, 0.55);
+  color: rgba(0, 220, 160, 0.88);
+  font-family: 'Courier New', monospace;
+  font-size: 7px;
+  letter-spacing: 0.09em;
+  padding: 2px 8px;
+  cursor: pointer;
+  border-radius: 2px;
+  flex-shrink: 0;
+  transition: all 0.12s;
+  font-weight: bold;
+}
+.dn-ascend-btn:hover {
+  background: rgba(0, 100, 100, 0.40);
+  color: #00ffcc;
+  border-color: rgba(0, 240, 180, 0.75);
+  box-shadow: 0 0 6px rgba(0, 220, 160, 0.25);
 }
 
 /* ── Event finder button ──────────────────────────────────────────── */

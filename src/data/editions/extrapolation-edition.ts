@@ -156,7 +156,7 @@ export const EXTRAPOLATION_CARDS: CollectorCard[] = [
   {
     id: 10, name: 'The Mule', series: 'Extrapolation Edition',
     edition: 10, maxEdition: 11, rarity: 'uncommon', rarityScore: 3, mintedCount: 0,
-    description: 'The Robot Mule — a corpus-driven knowledge assistant that lives in your settlement gallery. It speaks in your words, not ours.',
+    description: 'The mule-bot — a corpus-driven knowledge assistant that lives in your settlement gallery. It speaks in your words, not ours.',
     bgFrom: '#0a0800', bgTo: '#181000',
     borderColor: '#22cc66', glowColor: 'rgba(255,180,40,0.45)',
     artColors: ['#ffd480', '#ffaa00', '#cc8800', '#332200', '#ffeeaa'],

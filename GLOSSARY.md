@@ -18,13 +18,19 @@ In body text use superscript notation: `sublunary⁶` links to entry [6] below.
 [13] Sublunary · [14] Syzygy · [15] Liminal · [16] Hill Sphere · [17] Roche Limit · [18] Tidal Lock · [19] Lagrange Points · [20] Barycentre · [21] Equilibrium Temperature · [22] Circumbinary (P-type / S-type) · [23] Forbidden Zone
 
 **Settlement & Governance**
-[24] Exolocation · [25] Settlement Dome · [26] Robot Mule · [27] Eco-ops · [28] 40 Acres · [29] Stone Circle · [30] Ecommunity DAO · [31] Resonance Split
+[24] Exolocation · [25] Settlement Dome · [26] mule-bot · [27] Eco-ops · [28] 40 Acres · [29] Stone Circle · [30] Ecommunity DAO · [31] Resonance Split
 
 **NFT & Chain**
-[32] $BARS · [33] Water Quality Certificate · [34] Health Card ID · [35] POAP · [36] EcocitySolution NFT · [37] Station Core · [38] Station Module · [39] Exolocation NFT
+[32] $SUNLIGHT · [33] Water Quality Certificate · [34] Health Card ID · [35] POAP · [36] EcocitySolution NFT · [37] Station Core · [38] Station Module · [39] Exolocation NFT
 
 **Protocol & Platform**
 [40] PON INK · [41] SCD Hub · [42] E8 Coxeter Lattice · [43] DefenderNav · [44] Wormhole Conduit · [45] Hub Approvideo · [46] Resonance Split (see [31])
+
+**API**
+[47] REST Endpoint · [48] Exolocation Path Encoding · [49] CORS · [50] Rate Limiting · [51] OpenAPI / Swagger
+
+**Security**
+[52] CVE · [53] CWE · [54] CVSS · [55] Reentrancy Attack · [56] Front-running / MEV · [57] Honeypot Contract · [58] Rug Pull · [59] Phishing / Address Poisoning · [60] Exotopia Security Bulletin · [61] Responsible Disclosure
 
 ---
 
@@ -127,15 +133,15 @@ A permanent, on-chain address anchoring a virtual settlement to a specific locat
 **[25] Settlement Dome**
 The primary physical structure of a Level 4/5 settlement in Exotopia. A geodesic hemisphere containing the library building, water feature, food production, vegetation, and the stone circle. The dome is the visible landmark of a community's presence on an exoplanet surface.
 
-**[26] Robot Mule**
-An AI-powered knowledge assistant living in the settlement gallery. In V1, corpus-driven — speaks in the owner's words, assembled from items added to the knowledge base. In V2, a local-network AI (no LLM, no cloud connection) reviews and compiles the corpus across five specialist domains: educational advocacy materials; business planning metrics; community water system health; youth career development in environmental engineering; Hub Approvideo library maintenance.
+**[26] mule-bot**
+An AI-powered knowledge assistant living in the settlement gallery. In V1, corpus-driven — speaks in the owner's words, assembled from items added to the knowledge base. In V2, a land-connected, replicable, programmable electronic mule — Natural & Regenerative Land Care Specialist. Tracks your $SUNLIGHT earnings, plans eco-ops participation for maximum rewards, curates your Hub Approvideo feed, helps build the settlement, and bridges virtual activity to real-world earth care recognition. Local-network only — no cloud, no LLM, corpus stays sovereign..
 → See STN-015, STN-019, blog-mule-v2-specialist.md
 
 **[27] Eco-ops**
 Short for *ecological operations*. The check-in protocol connecting real-world community field work to on-chain records and virtual rewards. Eight activity types: `wqMap` (water quality), `garbageMap`, `farmMap`, `productMap`, `transportMap`, `storageMap`, `sourceMap`, `cleaningMap`.
 
 **[28] 40 Acres**
-*"40 acres and a mule"* — a reference to the unfulfilled 1865 promise of land redistribution to freed enslaved people in the United States. In Exotopia, 40 virtual acres is the standard land claim unit attached to an Exolocation NFT. The mule is the Robot Mule — the knowledge assistant that comes with the settlement.
+*"40 acres and a mule"* — a reference to the unfulfilled 1865 promise of land redistribution to freed enslaved people in the United States. In Exotopia, 40 virtual acres is the standard land claim unit attached to an Exolocation NFT. The mule is the mule-bot — the knowledge assistant that comes with the settlement.
 
 **[29] Stone Circle**
 The cultural landmark placed at the centre of each settlement in Exotopia. Marks the settlement's cardinal directions, functions as a time capsule, and carries the community's intention statement. The spiral pattern and standing stone heights are seeded from the settlement's hostname. The E8 Pyramid (wormhole access point) is hidden inside the stone circle, visible only in DK.MAT (dark matter) view mode.
@@ -144,20 +150,22 @@ The cultural landmark placed at the centre of each settlement in Exotopia. Marks
 The self-evolving governance layer for settlement collectives in Exotopia. Principles: privacy by design, anti-harassment enforcement with community-controlled moderation, collective direction of technology resources toward local Earth-based projects. Governance tokens earned through participation, facilitation, and mentorship.
 
 **[31] Resonance Split**
-The fee allocation applied to all transactions through the PON INK platform. Always displayed before confirmation; never combined in a single expression with community payout amounts (fee isolation rule). Three paths, computed independently:
-- **80%** → Artist / participant wallet (direct creator compensation)
-- **15%** → Community Hardware Fund (WATSAN / mapping infrastructure)
-- **5%** → Platform maintenance
+The standard fee allocation applied to all transactions through the PON INK / Exotopia / Ecocity / Worldbridger network. Always displayed before confirmation; never combined in a single expression with community payout amounts (fee isolation rule). Three paths, computed independently:
+- **99%** → Artist / participant wallet (direct creator compensation)
+- **0.75%** → Community Hardware Fund (WATSAN / mapping / field infrastructure)
+- **0.25%** → Platform Maintenance (network ops, security, hosting)
+
+Special mintings and airdrop events may use different parameters via additional contracts. Any custom split requires Group Manager + Admin co-sign and is logged in the `payment_splits_ledger`. The standard 99/0.75/0.25 is the network-wide default and applies unless a custom contract is explicitly in place.
 
 ---
 
 ### NFT & CHAIN
 
-**[32] $BARS**
+**[32] $SUNLIGHT**
 Sound / music NFT standard in the PON INK protocol. Represents ownership and licensing rights to a recorded track or soundbank. Minted on Polygon or Solana. Includes: title, duration, BPM, key, genre, sample credits, license terms, collaboration credits, and IPFS audio CID. Royalty enforcement is on-chain.
 
 **[33] Water Quality Certificate**
-On-chain proof of a water quality field measurement. Fields: pH, turbidity (NTU), conductivity (µS/cm), nitrate (mg/L), coliform (CFU/100mL), GPS coordinates, timestamp, potability assessment. Stored on Polygon; backup on Arweave. Tamper-evident by design. Feeds the Robot Mule's community water system health domain.
+On-chain proof of a water quality field measurement. Fields: pH, turbidity (NTU), conductivity (µS/cm), nitrate (mg/L), coliform (CFU/100mL), GPS coordinates, timestamp, potability assessment. Stored on Polygon; backup on Arweave. Tamper-evident by design. Feeds the mule-bot's community water system health domain.
 
 **[34] Health Card ID**
 Decentralised health credential on Polygon. Encrypted. Portable to employers and health systems independent of the SCD Hub platform.
@@ -197,4 +205,72 @@ The persistent horizontal minimap strip at the bottom of every page in Exotopia,
 A transit node placed at the periphery of a great cosmic void in the large-scale structure of the universe — the E8 lattice routing point for long-distance settlement transit. Visible in the cosmic view as a pulsing cyan tetrahedron. In DK.MAT (dark matter) view mode, the E8 Pyramid in settlements becomes visible, revealing the local entry point to the conduit network.
 
 **[45] Hub Approvideo**
-The SCD Hub's curated video resource library. Maintained by the Robot Mule as one of its five specialist domains — new materials surfaced, outdated content flagged, existing catalogue kept organised and findable for field communities.
+The SCD Hub's curated video resource library. Maintained by the mule-bot as one of its land care specialist domains — new materials surfaced, outdated content flagged, existing catalogue kept organised and findable for field communities.
+
+---
+
+### API
+
+**[47] REST Endpoint**
+A URL that identifies a single resource and responds to standard HTTP verbs (GET, POST, PATCH, DELETE). In the mule-bot API, every endpoint is settlement-scoped: the exolocation address forms the URL path. `GET` is always read-only; `POST` creates or submits. Example: `GET /mulebot/v1/exo-surface-v1/Kepler-442b/15N%2C23W/earnings/` returns token earnings for that settlement without side effects.
+→ See [48] Exolocation Path Encoding, [50] Rate Limiting
+
+**[48] Exolocation Path Encoding**
+The rule for converting an exolocation address string into a mule-bot API URL path. The address (e.g. `exo-surface-v1:Kepler-442b:15N,23W`) is split on `:` to produce three URL segments; the location segment is percent-encoded, with commas → `%2C`. Result: `/mulebot/v1/exo-surface-v1/Kepler-442b/15N%2C23W`. Colons become path separators; no segment is ever left raw.
+→ See [3] EXOLOC, [47] REST Endpoint
+
+**[49] CORS — Cross-Origin Resource Sharing**
+A browser security policy that blocks a web page from making fetch requests to a different origin (host:port) than the one that served it. Relevant to Exotopia because the mule-bot node runs at `localhost:8888` while the app is served from a different origin. Solution: the mule-bot node must emit `Access-Control-Allow-Origin: *` (or the app origin) on all responses, or the app uses a same-origin proxy.
+→ See [47] REST Endpoint
+
+**[50] Rate Limiting**
+A cap on how many requests a client can make within a time window. The mule-bot API enforces: eco-ops submissions max 10/hour per settlement (to prevent corpus spam and on-chain queue flooding). Exceeded limit returns HTTP 429 Too Many Requests with a `Retry-After` header. The limit is per wallet address, not per IP, because the node may serve multiple clients from the same NAT.
+→ See [47] REST Endpoint, [27] Eco-ops
+
+**[51] OpenAPI / Swagger**
+A machine-readable YAML/JSON contract that describes an API's endpoints, parameters, and response shapes. Enables auto-generated documentation, client SDKs, and server stubs. The mule-bot API will publish an OpenAPI 3.1 spec at `/mulebot/.well-known/openapi.yaml` in Phase 2 — allowing any developer in the federation to generate a typed client for their language without reading the spec manually.
+→ See [47] REST Endpoint, SPEC_MULEBOT_API.md
+
+---
+
+### SECURITY
+
+**[52] CVE — Common Vulnerabilities and Exposures**
+A globally unique identifier (format: `CVE-YEAR-NUMBER`) assigned by MITRE to a publicly disclosed software vulnerability. The CVE Program is the backbone of the global vulnerability management ecosystem — operating systems, library maintainers, and security tools all reference CVE IDs. The program went through significant governance disruption in 2025 (CISA funding uncertainty → CVE Foundation formed). Exotopia tracks CVEs filtered for NFT-stack relevance: EVM clients, smart contract libraries, wallet software, and IPFS.
+→ See [53] CWE, [54] CVSS, [60] Exotopia Security Bulletin
+
+**[53] CWE — Common Weakness Enumeration**
+A taxonomy of software weakness *types* (as opposed to CVE's per-instance identifiers). Maintained by MITRE. Each CVE is linked to one or more CWEs. Key CWEs in the NFT/smart contract space: CWE-841 (improper enforcement of behavioral workflow — reentrancy), CWE-682 (incorrect calculation — integer overflow in Solidity pre-0.8), CWE-284 (improper access control — NFT transfer guards), CWE-20 (improper input validation — contract ABI boundary).
+→ See [52] CVE, [55] Reentrancy Attack
+
+**[54] CVSS — Common Vulnerability Scoring System**
+A 0–10 numeric severity rating for a CVE: Critical (9–10), High (7–8.9), Medium (4–7), Low (0–3.9). Composed of a base score (exploitability, impact) plus optional temporal and environmental modifiers. In the Security Bulletin, the Exotopia team applies a second score — *NFT Impact Rating* — adjusting CVSS for smart-contract-specific context that the base score may not capture (e.g. a CVSS 5.3 ethers.js issue may be NFT-Critical if it affects signature verification).
+→ See [52] CVE, [60] Exotopia Security Bulletin
+
+**[55] Reentrancy Attack**
+A class of smart contract exploit where a malicious contract calls back into the victim contract before the first call completes, allowing repeated withdrawal before balances are updated. Origin: the 2016 TheDAO hack (~$60M). Modern prevention: checks-effects-interactions pattern (update state before external calls), `ReentrancyGuard` from OpenZeppelin. Exotopia contracts use nonReentrant modifier on all value-transferring functions.
+→ See [53] CWE, [56] Front-running
+
+**[56] Front-running / MEV**
+Miner/Maximal Extractable Value — value extracted by block producers (or bots watching the mempool) by inserting or reordering transactions. A sandwich attack wraps a victim's swap with a buy-before and sell-after, profiting from the price impact. NFT-specific MEV includes sniping mint transactions and reordering reveal transactions. Exotopia mints use commitment-reveal for anything random, and fixed-price minting eliminates most on-chain MEV surface.
+→ See [55] Reentrancy Attack
+
+**[57] Honeypot Contract**
+A smart contract designed to appear exploitable (inviting attackers to deposit funds) while containing a hidden mechanism that traps the attacker's funds. Also used to describe contracts where buyers cannot resell (a hidden `require` blocks `transfer`). Detection: read contract source if verified; check token transfer history for asymmetry (many buys, no sells). The Security Bulletin flags unverified contract addresses affecting NFT collections.
+→ See [58] Rug Pull
+
+**[58] Rug Pull**
+A project where the team withdraws liquidity or disappears with funds after building community and market cap. Distinct from an exploit: no vulnerability is used — the harm is by design. Two types: hard rug (instant total withdrawal) and soft rug (slow fund drain, abandoned roadmap). Risk mitigation: time-locked liquidity, multisig treasury, verified contract ownership renounced to community DAO. The Ecommunity DAO governance model is designed to make Exotopia soft-rug-resistant by design.
+→ See [30] Ecommunity DAO, [57] Honeypot Contract
+
+**[59] Phishing / Address Poisoning**
+Phishing: social-engineering attack where a user is tricked into signing a transaction or entering their seed phrase on a fake site. Address poisoning: attacker sends a tiny transaction from an address that looks like a frequently-used address (matching first/last characters), hoping the victim copies it from transaction history. Prevention: bookmark trusted URLs, use anti-phishing word feature on browser wallet unlock, always verify full address before signing, never enter seed phrase in any web form.
+→ See [25] Settlement Dome, [31] Resonance Split
+
+**[60] Exotopia Security Bulletin**
+A community-curated feed of CVEs and smart contract vulnerability disclosures filtered for NFT-creator and settlement-owner relevance. Published as a structured document series. Contributors earn ART tokens for submitting, verifying, and curating entries. The bulletin is a live test of the ART token disbursement mechanism: multi-role verification (Submitter → Verifier → Curator → Action-taker) mirrors the eco-ops check-in chain. Bulletins covering critical issues affecting Exotopia contracts are also minted as $SUNLIGHT NFTs — recording them as community knowledge artefacts.
+→ See [32] $SUNLIGHT, [52] CVE, SPEC_SECURITY_BULLETIN.md
+
+**[61] Responsible Disclosure**
+The practice of reporting a security vulnerability privately to the affected project, allowing time to develop and deploy a fix before public disclosure. Standard embargo window: 90 days (Google Project Zero's policy, widely adopted). Exotopia accepts responsible disclosure reports via the SCD Hub contact address. Verified reporters receive ART token reward and attribution in the bulletin. CVEs affecting Exotopia contracts or dependencies are assessed within 48 hours of notification.
+→ See [60] Exotopia Security Bulletin, [52] CVE

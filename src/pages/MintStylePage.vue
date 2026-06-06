@@ -138,7 +138,7 @@
                   <q-select v-model="style.wb1Config.license" :options="LICENSES" emit-value map-options label="License" dark dense outlined class="ms-field" @update:model-value="touch" />
                 </div>
                 <div class="ms-row">
-                  <q-toggle v-model="style.wb1Config.includeMusic"  label="Include music ($BARS)" color="amber-5" dense @update:model-value="touch" />
+                  <q-toggle v-model="style.wb1Config.includeMusic"  label="Include music ($SUNLIGHT)" color="amber-5" dense @update:model-value="touch" />
                   <q-toggle v-model="style.wb1Config.includeVisual" label="Include visual artwork"  color="purple-5" dense @update:model-value="touch" />
                 </div>
                 <div v-if="style.wb1Config.includeMusic" class="ms-row">
@@ -196,11 +196,11 @@
             </Transition>
           </div>
 
-          <!-- ── Robot Mule Knowledge Delta ────────────────────────── -->
+          <!-- ── mule-bot Knowledge Delta ────────────────────────── -->
           <div :class="['ms-source-block', { 'ms-source-block--active': style.sources.mule_delta }]">
             <div class="ms-source-header" @click="toggle('mule_delta')">
               <div class="ms-source-dot ms-dot--mule" />
-              <span class="ms-source-name">Robot Mule  ·  Land Knowledge Delta</span>
+              <span class="ms-source-name">mule-bot  ·  Land Knowledge Delta</span>
               <q-space />
               <q-toggle v-model="style.sources.mule_delta" color="amber-5" dense @update:model-value="touch" @click.stop />
             </div>

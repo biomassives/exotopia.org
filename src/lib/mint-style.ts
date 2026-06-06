@@ -12,7 +12,7 @@
  * Sources:
  *   wb1_artist        — Worldbridger One artist/musician profile and output
  *   ecocity_model     — Ecocity sustainable design object (exchangeable 3D code)
- *   mule_delta        — Robot Mule corpus knowledge delta since last mint
+ *   mule_delta        — mule-bot corpus knowledge delta since last mint
  *   gallery_event     — Exotopia gallery show / event metadata
  *   settlement_status — Exotopia settlement state and eco-ops history
  */
@@ -286,10 +286,10 @@ export function composeMetadata(style: MintingStyle): ComposeResult {
     }
   }
 
-  // ── Robot Mule — knowledge delta ───────────────────────────────────────────
+  // ── mule-bot — knowledge delta ───────────────────────────────────────────
   if (style.sources.mule_delta) {
     const c = style.muleDeltaConfig
-    if (!c.sphereId.trim()) warnings.push('Robot Mule: sphere ID is empty')
+    if (!c.sphereId.trim()) warnings.push('mule-bot: sphere ID is empty')
     else {
       sources.push('robot-mule')
       attrs.push({ trait_type: 'Settlement Sphere', value: c.settlementName || c.sphereId })
@@ -381,7 +381,7 @@ export function composeMetadata(style: MintingStyle): ComposeResult {
       serial,
       target_chain:  style.targetChain,
       composed_at:   new Date().toISOString(),
-      resonance_split: { creator: 0.80, hardware_fund: 0.15, platform: 0.05 },
+      resonance_split: { creator: 0.99, hardware_fund: 0.0075, platform: 0.0025 },
     },
   }
 

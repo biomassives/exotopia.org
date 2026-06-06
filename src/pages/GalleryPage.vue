@@ -162,7 +162,19 @@
             #{{ String(card.id).padStart(2,'0') }}
           </div>
 
-          <CollectorCard :card="card" :width="220" :height="308" />
+          <!-- 3D flip scene -->
+          <div class="flip-scene">
+            <div class="flip-card">
+              <!-- Front face -->
+              <div class="flip-face flip-face--front">
+                <CollectorCard :card="card" :width="220" :height="308" />
+              </div>
+              <!-- Back face -->
+              <div class="flip-face flip-face--back">
+                <CollectorCardBack :card="card" :width="220" :height="308" />
+              </div>
+            </div>
+          </div>
 
           <div class="cell-footer">
             <div class="cell-name">{{ card.name }}</div>
@@ -401,7 +413,8 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import CollectorCard from 'src/components/CollectorCard.vue'
+import CollectorCard     from 'src/components/CollectorCard.vue'
+import CollectorCardBack from 'src/components/CollectorCardBack.vue'
 import {
   EDITIONS, EDITION_TOC, STATUS_LABELS,
   type Edition,
@@ -544,7 +557,7 @@ const ANNOUNCEMENTS: Announcement[] = [
   {
     id: 5, status: 'live',
     title:       'Wormhole Chime — Etheric Bell',
-    description: 'Web Audio API pentatonic bell (A4/E5/C#5) with 6-partial shimmer. Zero audio file bytes — synthesised in browser. 25% volume. Arrival tone at 5.5s.',
+    description: 'Web Audio API pentatonic bell (A4/E5/C#5) with 6-partial shimmer. Zero audio file bytes — synthesised in browser. 20% volume. Arrival tone at 5.5s.',
     category:    'AUDIO',
     targets:     ['all users'],
     target:      'MIDI-style, ships light',
@@ -553,8 +566,8 @@ const ANNOUNCEMENTS: Announcement[] = [
   // ── TESTING ──────────────────────────────────────────────────────────────
   {
     id: 6, status: 'testing',
-    title:       'Polygon Amoy — $BARS & WQ Certs',
-    description: '$BARS sound NFTs, Water Quality Certifications, and Health Card IDs on Polygon Amoy testnet. ERC-721, MetaMask compatible. Dry-run mode active.',
+    title:       'Polygon Amoy — $SUNLIGHT & WQ Certs',
+    description: '$SUNLIGHT SUNLIGHT NFTs, Water Quality Certifications, and Health Card IDs on Polygon Amoy testnet. ERC-721, MetaMask compatible. Dry-run mode active.',
     category:    'CHAIN',
     targets:     ['artists', 'field workers'],
     chain:       'POLYGON AMOY 80002',
@@ -572,7 +585,7 @@ const ANNOUNCEMENTS: Announcement[] = [
   {
     id: 8, status: 'live',
     title:       'Generative Minting Style Builder',
-    description: 'Configure named NFT "styles" that combine up to five sources: Worldbridger One artist/musician, Ecocity sustainable model, Robot Mule knowledge delta, gallery show event, and settlement eco-ops history. Session-aware smart presets based on what you explored today.',
+    description: 'Configure named NFT "styles" that combine up to five sources: Worldbridger One artist/musician, Ecocity sustainable model, mule-bot knowledge delta, gallery show event, and settlement eco-ops history. Session-aware smart presets based on what you explored today.',
     category:    'MINTING',
     targets:     ['artists', 'community builders'],
     target:      'Route: /mint-style — fully live',
@@ -590,8 +603,8 @@ const ANNOUNCEMENTS: Announcement[] = [
   // ── COMING SOON ───────────────────────────────────────────────────────────
   {
     id: 10, status: 'soon',
-    title:       'Tezos FA2 — Art Collectibles & $BARS',
-    description: 'Tezos has a strong NFT art/music culture (Objkt, fxhash). FA2 standard. Low energy, on-chain metadata. $BARS music NFTs and visual art collectibles.',
+    title:       'Tezos FA2 — Art Collectibles & $SUNLIGHT',
+    description: 'Tezos has a strong NFT art/music culture (Objkt, fxhash). FA2 standard. Low energy, on-chain metadata. $SUNLIGHT music NFTs and visual art collectibles.',
     category:    'CHAIN',
     targets:     ['artists', 'musicians'],
     chain:       'TEZOS (Ghostnet testnet)',
@@ -616,7 +629,7 @@ const ANNOUNCEMENTS: Announcement[] = [
   {
     id: 13, status: 'soon',
     title:       'Gallery Interior — Native Three.js Orbital',
-    description: 'Collector card gallery view is live (Vue 3, native). The full immersive orbital gallery — encapsulated Three.js with DefenderNav floor plan strip at Level 3.5, artwork panels, and Robot Mule companion — replaces the remaining sandboxed WebXR iframe.',
+    description: 'Collector card gallery view is live (Vue 3, native). The full immersive orbital gallery — encapsulated Three.js with DefenderNav floor plan strip at Level 3.5, artwork panels, and mule-bot companion — replaces the remaining sandboxed WebXR iframe.',
     category:    'GALLERY',
     targets:     ['artists', 'visitors'],
     target:      'Cards view: live · Three.js orbital: coming',
@@ -634,7 +647,7 @@ const ANNOUNCEMENTS: Announcement[] = [
   },
   {
     id: 15, status: 'planned',
-    title:       'Robot Mule V2 — Domain Specialist (Local AI)',
+    title:       'mule-bot — Domain Specialist (Local AI)',
     description: 'V2 is a purpose-built specialist, not a general assistant. Local-network AI (no LLM, no cloud) reviews and compiles the corpus across five defined knowledge domains: (1) educational materials supporting advocacy; (2) business planning metrics for community development; (3) community water system health — tracking, analysis, and reporting; (4) young people\'s career development in environmental engineering; (5) maintenance of the hub Approvideo library. Owners interact with the database through a dedicated UI — browsing, editing, and approving what the Mule represents in each domain.',
     category:    'LOCAL AI',
     targets:     ['settlement owners', 'facilitators', 'Uni-Kibaoni', 'youth'],
@@ -667,8 +680,8 @@ const ANNOUNCEMENTS: Announcement[] = [
   },
   {
     id: 19, status: 'live',
-    title:       'Mule V2 Design Published — "The Mule Knows Five Things"',
-    description: 'Design blog post and SPEC_PON_INK.md updated. The Mule V2 is defined as a domain specialist — not a general assistant and not connected to any LLM. Local-network AI reviews and compiles the corpus across five domains: educational advocacy materials; business planning metrics; community water system health; youth career development in environmental engineering; Hub Approvideo library maintenance. Full spec in SPEC_PON_INK.md. Blog post: blog-mule-v2-specialist.md.',
+    title:       'mule-bot Design Published — "The mule-bot · land care specialist"',
+    description: 'Design blog post and SPEC_PON_INK.md updated. The mule-bot is defined as a domain specialist — not a general assistant and not connected to any LLM. Local-network AI reviews and compiles the corpus across five domains: educational advocacy materials; business planning metrics; community water system health; youth career development in environmental engineering; Hub Approvideo library maintenance. Full spec in SPEC_PON_INK.md. Blog post: blog-mule-v2-specialist.md.',
     category:    'DESIGN DOC',
     targets:     ['all communities', 'settlement owners', 'facilitators', 'youth'],
     target:      'blog-mule-v2-specialist.md · SPEC_PON_INK.md',
@@ -732,7 +745,7 @@ function downloadSvg(card: CardType) {
   border-bottom: 1px solid rgba(0, 120, 180, 0.18);
   background:
     radial-gradient(ellipse 70% 90% at 30% 50%, rgba(0,30,60,0.40) 0%, transparent 70%),
-    radial-gradient(ellipse 50% 70% at 80% 40%, rgba(30,10,60,0.30) 0%, transparent 65%);
+    radial-gradient(ellipse 50% 70% at 80% 40%, rgba(30,10,60,0.30) 0%, transparent 60%);
 }
 
 /* Star field */
@@ -1065,6 +1078,40 @@ function downloadSvg(card: CardType) {
   background: rgba(0, 4, 14, 0.90);
   transition: background 0.18s;
   border: 1px solid transparent;
+}
+
+/* ── 3D flip ────────────────────────────────────────────────── */
+
+.flip-scene {
+  perspective: 900px;
+  width: 220px;
+  height: 308px;
+  flex-shrink: 0;
+}
+
+.flip-card {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  transform-style: preserve-3d;
+  transition: transform 0.60s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Hover on card-cell triggers the flip via .flip-card */
+.card-cell:hover .flip-card {
+  transform: rotateY(180deg);
+}
+
+.flip-face {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.flip-face--back {
+  transform: rotateY(180deg);
 }
 
 .card-cell::before {

@@ -60,7 +60,10 @@
 
       <!-- Page header -->
       <div class="gloss-header">
-        <h1 class="gloss-title">EXOTOPIA / PON INK — GLOSSARY</h1>
+        <h1 class="gloss-title">
+          <router-link to="/" class="gloss-home-link">EXOTOPIA</router-link>
+          / PON INK — GLOSSARY
+        </h1>
         <p class="gloss-intro">
           Canonical reference for all platform terminology.
           Numbered entries are used as footnotes across all documents
@@ -298,9 +301,9 @@ const TERMS: GlossTerm[] = [
     related: [26, 29],
   },
   {
-    id: 26, category: 'settlement', term: 'Robot Mule',
+    id: 26, category: 'settlement', term: 'mule-bot',
     short: 'AI-powered domain specialist knowledge assistant living in the settlement gallery.',
-    body: 'In V1, corpus-driven — speaks in the owner\'s words, assembled from items added to the knowledge base. In V2, a local-network AI (no LLM, no cloud) reviews and compiles the corpus across five specialist domains: educational advocacy materials; business planning metrics; community water system health; youth career development in environmental engineering; Hub Approvideo library maintenance.',
+    body: 'In V1, corpus-driven — speaks in the owner\'s words, assembled from items added to the knowledge base. In V2, a local-network AI (no LLM, no cloud) reviews and compiles the corpus across land care specialist domains: educational advocacy materials; business planning metrics; community water system health; youth career development in environmental engineering; Hub Approvideo library maintenance.',
     related: [27, 45],
   },
   {
@@ -312,7 +315,7 @@ const TERMS: GlossTerm[] = [
   {
     id: 28, category: 'settlement', term: '40 Acres',
     short: '"40 acres and a mule" — the standard virtual land claim unit with its knowledge assistant.',
-    body: 'A reference to the unfulfilled 1865 promise of land redistribution to freed enslaved people in the United States. In Exotopia, 40 virtual acres is the standard land claim unit attached to an Exolocation NFT. The mule is the Robot Mule — the knowledge assistant that accompanies the settlement.',
+    body: 'A reference to the unfulfilled 1865 promise of land redistribution to freed enslaved people in the United States. In Exotopia, 40 virtual acres is the standard land claim unit attached to an Exolocation NFT. The mule is the mule-bot — the knowledge assistant that accompanies the settlement.',
     related: [24, 26],
   },
   {
@@ -330,13 +333,13 @@ const TERMS: GlossTerm[] = [
   {
     id: 31, category: 'settlement', term: 'Resonance Split',
     short: '80 / 15 / 5 — the fee allocation applied to all PON INK transactions.',
-    body: 'Always displayed before confirmation; never combined in a single expression with community payout amounts (fee isolation rule). Three independent paths: 80% → artist/participant wallet; 15% → Community Hardware Fund (WATSAN / mapping infrastructure); 5% → platform maintenance.',
+    body: 'Always displayed before confirmation; never combined in a single expression with community payout amounts (fee isolation rule). Three independent paths: 80% → artist/participant wallet; 10% → Community Fund (WATSAN / mapping infrastructure); 0% → platform maintenance.',
     related: [40],
   },
 
   // ── NFT & CHAIN ──────────────────────────────────────────────────────────
   {
-    id: 32, category: 'nft', term: '$BARS',
+    id: 32, category: 'nft', term: '$SUNLIGHT',
     short: 'Sound / music NFT — ownership and licensing rights to a recorded track.',
     body: 'Represents ownership and licensing rights to a recorded track or soundbank. Minted on Polygon or Solana. Includes title, duration, BPM, key, genre, sample credits, license terms, and IPFS audio CID. Royalty enforcement is on-chain.',
     related: [31],
@@ -344,7 +347,7 @@ const TERMS: GlossTerm[] = [
   {
     id: 33, category: 'nft', term: 'Water Quality Certificate',
     short: 'On-chain proof of a water quality field measurement — tamper-evident.',
-    body: 'Fields: pH, turbidity (NTU), conductivity (µS/cm), nitrate (mg/L), coliform (CFU/100mL), GPS coordinates, timestamp, potability assessment. Stored on Polygon; backup on Arweave. Feeds the Robot Mule\'s community water system health domain.',
+    body: 'Fields: pH, turbidity (NTU), conductivity (µS/cm), nitrate (mg/L), coliform (CFU/100mL), GPS coordinates, timestamp, potability assessment. Stored on Polygon; backup on Arweave. Feeds the mule-bot\'s community water system health domain.',
     related: [26, 27],
   },
   {
@@ -417,8 +420,8 @@ const TERMS: GlossTerm[] = [
   },
   {
     id: 45, category: 'platform', term: 'Hub Approvideo',
-    short: 'The SCD Hub\'s curated approved video resource library — maintained by the Robot Mule.',
-    body: 'The SCD Hub\'s curated collection of approved video resources. Maintained by the Robot Mule as one of its five specialist domains — new materials surfaced, outdated content flagged, existing catalogue kept organised and findable for field communities.',
+    short: 'The SCD Hub\'s curated approved video resource library — maintained by the mule-bot.',
+    body: 'The SCD Hub\'s curated collection of approved video resources. Maintained by the mule-bot as one of its land care specialist domains — new materials surfaced, outdated content flagged, existing catalogue kept organised and findable for field communities.',
     related: [26],
   },
 ]
@@ -659,6 +662,16 @@ const TermEntry = defineComponent({
 }
 
 .gloss-header { margin-bottom: 28px; }
+
+.gloss-home-link {
+  color: inherit;
+  text-decoration: none;
+  transition: color 0.14s, text-shadow 0.14s;
+}
+.gloss-home-link:hover {
+  color: #4dd0e1;
+  text-shadow: 0 0 8px rgba(77, 208, 225, 0.4);
+}
 
 .gloss-title {
   font-size: 18px;

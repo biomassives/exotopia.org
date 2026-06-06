@@ -7,6 +7,54 @@
 
 import * as THREE from 'three'
 
+// ── Scene disposal ────────────────────────────────────────────────────────────
+
+/**
+ * Traverse a Three.js Object3D (scene or group) and dispose every GPU resource:
+ * geometry buffers, materials, and any textures on those materials.
+ *
+ * Call this before renderer.dispose() in every onUnmounted / teardown handler.
+ * Prevents WebGL memory accumulation across page transitions.
+ *
+ * Usage:
+ *   disposeScene(scene)
+ *   renderer.dispose()
+ *   controls.dispose()
+ */
+export function disposeScene(root: THREE.Object3D): void {
+  root.traverse(obj => {
+    // Geometry
+    const mesh = obj as THREE.Mesh
+    if (mesh.geometry) {
+      mesh.geometry.dispose()
+    }
+
+    // Material(s)
+    const mats: THREE.Material[] = Array.isArray(mesh.material)
+      ? mesh.material
+      : mesh.material ? [mesh.material] : []
+
+    for (const mat of mats) {
+      // Dispose every texture slot on the material
+      for (const value of Object.values(mat as unknown as Record<string, unknown>)) {
+        if (value instanceof THREE.Texture) value.dispose()
+      }
+      mat.dispose()
+    }
+  })
+}
+
+/**
+ * Dispose a single material and all its texture slots.
+ * Useful when you hold a reference to a material outside the scene graph.
+ */
+export function disposeMaterial(mat: THREE.Material): void {
+  for (const value of Object.values(mat as unknown as Record<string, unknown>)) {
+    if (value instanceof THREE.Texture) value.dispose()
+  }
+  mat.dispose()
+}
+
 // ── Star color from effective temperature (Kelvin) ────────────────────────────
 
 export function starColorFromTeff(teff: number | null | undefined): THREE.Color {
@@ -123,11 +171,30 @@ export function buildTerrainGeometry(
 
 // ── Distance / scale conversions ─────────────────────────────────────────────
 
-/** Real distance (parsecs) → Three.js scene units (log scale, max ~700) */
-export function distToViz(pc: number | null | undefined): number {
-  if (pc == null) return 150 + Math.random() * 250
+/** Deterministic seed → float [0,1) — avoids random placement jitter on reload */
+function _seededUnit(seed: number): number {
+  let s = seed | 0
+  s = (s ^ 61) ^ (s >>> 16); s = (s + (s << 3)) | 0
+  s = s ^ (s >>> 4); s = (Math.imul(s, 0x27d4eb2d)) | 0
+  return ((s ^ (s >>> 15)) >>> 0) / 0xffffffff
+}
+
+/** Convert a hostname string to a stable integer seed */
+export function hostnameToSeed(hostname: string): number {
+  return hostname.split('').reduce((a, c) => (Math.imul(a, 31) + c.charCodeAt(0)) | 0, 7) >>> 0
+}
+
+/**
+ * Real distance (parsecs) → Three.js scene units (log scale, max ~700).
+ * When pc is null/N/A, a deterministic position is assigned from the hostname
+ * seed so the star always appears at the same location across page loads.
+ * Most imaging-discovered systems with missing parallax are within 50–400 pc;
+ * we place them in the 120–380 scene-unit band.
+ */
+export function distToViz(pc: number | null | undefined, seed = 0): number {
+  if (pc == null) return 120 + _seededUnit(seed) * 260
   const d = parseFloat(String(pc))
-  if (isNaN(d) || d <= 0) return 150 + Math.random() * 250
+  if (isNaN(d) || d <= 0) return 120 + _seededUnit(seed) * 260
   return 80 + 620 * Math.log10(1 + d) / Math.log10(1001)
 }
 

@@ -13,6 +13,12 @@ Thumbs.db
 
 # Dependency directories (if not using a package manager)
 node_modules/
+
+# Contract deployment artifacts (contain addresses, not secrets)
+contracts/deployed-*.json
+contracts/artifacts/
+contracts/cache/
+contracts/typechain-types/
 __pycache__/
 
 # Build files

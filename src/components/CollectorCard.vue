@@ -474,21 +474,116 @@
         <rect x="10" y="46" width="260" height="210" fill="none" :stroke="card.artColors[2]" stroke-width="0.3" opacity="0.15" rx="4" />
       </g>
 
-      <!-- 16: Callus Print — fingerprint rings -->
-      <g v-else-if="card.id === 16" :transform="`translate(140, 151)`">
-        <!-- Fingerprint loop pattern — concentric irregular ovals -->
-        <g v-for="(s, i) in [8,16,24,32,40,48,56,64,72,80,88]" :key="i">
-          <ellipse cx="0" cy="0" :rx="s * 0.85" :ry="s"
-            fill="none" :stroke="card.artColors[0]" stroke-width="1.2"
-            :opacity="0.55 - i * 0.03"
-            :transform="`rotate(${i * 3 - 15})`" />
-        </g>
-        <!-- Core whorl -->
-        <ellipse cx="2" cy="-4" rx="5" ry="6" :fill="card.artColors[0]" opacity="0.80" />
-        <!-- Ridge interruption (scar) -->
-        <rect x="20" y="-30" width="18" height="2.5" :fill="card.bgFrom" opacity="1" transform="rotate(5, 20, -30)" />
-        <!-- Label -->
-        <text x="0" y="98" font-family="'Courier New', monospace" font-size="7" :fill="card.artColors[1]" opacity="0.60" text-anchor="middle" letter-spacing="0.12em">RIGHT INDEX  ·  CALLUS RIDGE PRESENT</text>
+      <!-- 16: Callus Print — proper ulnar loop dermoglyph specimen -->
+      <g v-else-if="card.id === 16" :transform="`translate(138, 152)`">
+
+        <!-- Callus zone wash — right side of loop where ridges meet the tool -->
+        <radialGradient id="callus-wash" cx="68%" cy="50%" r="45%">
+          <stop offset="0%"   :stop-color="card.artColors[2]" stop-opacity="0.13"/>
+          <stop offset="100%" :stop-color="card.artColors[2]" stop-opacity="0"/>
+        </radialGradient>
+        <ellipse cx="28" cy="0" rx="60" ry="78" fill="url(#callus-wash)"/>
+
+        <!-- Faint forensic reference grid -->
+        <line x1="-82" y1="0"  x2="82" y2="0"  :stroke="card.artColors[3]" stroke-width="0.35" opacity="0.14" stroke-dasharray="2,5"/>
+        <line x1="0"  y1="-90" x2="0"  y2="90"  :stroke="card.artColors[3]" stroke-width="0.35" opacity="0.14" stroke-dasharray="2,5"/>
+
+        <!--
+          Loop ridges — ulnar loop, opens to the right.
+          Each is an SVG arc: M sx sy A rx ry 0 1 1 sx ey
+          (large-arc=1, sweep=1 = clockwise around the right side)
+          Ridges i≥8 enter the callus zone (lighter, slightly thicker).
+        -->
+        <!-- i=0 inner -->
+        <path d="M -7.9 5.0  A  8  10 0 1 1 -7.9  -5.0"  fill="none" :stroke="card.artColors[0]" stroke-width="1.05" opacity="0.62"/>
+        <!-- i=1 -->
+        <path d="M -13.5 8.0  A 13  16 0 1 1 -13.5  -8.0"  fill="none" :stroke="card.artColors[0]" stroke-width="1.05" opacity="0.64"/>
+        <!-- i=2 -->
+        <path d="M -19.0 11.0 A 18  22 0 1 1 -19.0 -11.0" fill="none" :stroke="card.artColors[0]" stroke-width="1.10" opacity="0.66"/>
+        <!-- i=3 -->
+        <path d="M -24.5 14.0 A 23  28 0 1 1 -24.5 -14.0" fill="none" :stroke="card.artColors[0]" stroke-width="1.10" opacity="0.67"/>
+        <!-- i=4 -->
+        <path d="M -30.1 17.0 A 28  34 0 1 1 -30.1 -17.0" fill="none" :stroke="card.artColors[0]" stroke-width="1.15" opacity="0.68"/>
+        <!-- i=5 -->
+        <path d="M -35.6 20.0 A 33  40 0 1 1 -35.6 -20.0" fill="none" :stroke="card.artColors[0]" stroke-width="1.15" opacity="0.68"/>
+        <!-- i=6 -->
+        <path d="M -41.1 23.0 A 38  46 0 1 1 -41.1 -23.0" fill="none" :stroke="card.artColors[0]" stroke-width="1.20" opacity="0.67"/>
+        <!-- i=7 -->
+        <path d="M -46.6 26.0 A 43  52 0 1 1 -46.6 -26.0" fill="none" :stroke="card.artColors[0]" stroke-width="1.20" opacity="0.65"/>
+        <!-- i=8  — callus zone begins: slightly lighter, thicker ridges -->
+        <path d="M -52.2 29.0 A 48  58 0 1 1 -52.2 -29.0" fill="none" :stroke="card.artColors[2]" stroke-width="1.55" opacity="0.60"/>
+        <!-- i=9 -->
+        <path d="M -57.7 32.0 A 53  64 0 1 1 -57.7 -32.0" fill="none" :stroke="card.artColors[2]" stroke-width="1.60" opacity="0.58"/>
+        <!-- i=10 -->
+        <path d="M -63.2 35.0 A 58  70 0 1 1 -63.2 -35.0" fill="none" :stroke="card.artColors[2]" stroke-width="1.65" opacity="0.55"/>
+        <!-- i=11 -->
+        <path d="M -68.8 38.0 A 63  76 0 1 1 -68.8 -38.0" fill="none" :stroke="card.artColors[2]" stroke-width="1.70" opacity="0.50"/>
+        <!-- i=12 outer -->
+        <path d="M -74.3 41.0 A 68  82 0 1 1 -74.3 -41.0" fill="none" :stroke="card.artColors[2]" stroke-width="1.75" opacity="0.44"/>
+
+        <!-- Delta region — triangular ridge junction at lower-right -->
+        <polygon points="42,-64 49,-55 35,-55"
+          fill="none" :stroke="card.artColors[1]" stroke-width="0.9" opacity="0.42"/>
+        <!-- Delta cross-lines -->
+        <line x1="35" y1="-55" x2="22" y2="-45" :stroke="card.artColors[1]" stroke-width="0.7" opacity="0.30"/>
+        <line x1="49" y1="-55" x2="58" y2="-45" :stroke="card.artColors[1]" stroke-width="0.7" opacity="0.30"/>
+
+        <!-- Loop core — small closed oval at apex of the loop, tight inner marker -->
+        <ellipse cx="0" cy="-2" rx="5" ry="7"
+          fill="none" :stroke="card.artColors[0]" stroke-width="1.0" opacity="0.72"/>
+        <circle cx="0" cy="-2" r="2.2" :fill="card.artColors[0]" opacity="0.55"/>
+
+        <!-- ── Minutiae markers ─────────────────────────────────────────── -->
+        <!-- Bifurcation 1 — ridge 4 forks at upper-right arc -->
+        <path d="M 22 -27 L 28 -27 L 31 -33"
+          fill="none" :stroke="card.artColors[3]" stroke-width="1.3" opacity="0.58" stroke-linecap="round"/>
+        <path d="M 28 -27 L 31 -21"
+          fill="none" :stroke="card.artColors[3]" stroke-width="1.3" opacity="0.58" stroke-linecap="round"/>
+
+        <!-- Bifurcation 2 — ridge 7, left lower arc -->
+        <path d="M -42 20 L -36 17 L -32 22"
+          fill="none" :stroke="card.artColors[3]" stroke-width="1.3" opacity="0.52" stroke-linecap="round"/>
+        <path d="M -36 17 L -33 12"
+          fill="none" :stroke="card.artColors[3]" stroke-width="1.3" opacity="0.52" stroke-linecap="round"/>
+
+        <!-- Bifurcation 3 — callus zone, ridge 9 upper -->
+        <path d="M 30 -51 L 36 -51 L 39 -57"
+          fill="none" :stroke="card.artColors[3]" stroke-width="1.2" opacity="0.45" stroke-linecap="round"/>
+        <path d="M 36 -51 L 39 -45"
+          fill="none" :stroke="card.artColors[3]" stroke-width="1.2" opacity="0.45" stroke-linecap="round"/>
+
+        <!-- Ridge ending 1 — small circle at terminus of ridge 5 -->
+        <circle cx="-34" cy="-20" r="2.2" :fill="card.artColors[3]" opacity="0.50"/>
+        <!-- Ridge ending 2 — ridge 11 outer -->
+        <circle cx="-68" cy="-38" r="2.2" :fill="card.artColors[3]" opacity="0.42"/>
+
+        <!-- Callus zone bracket annotation -->
+        <path d="M 54 -68 L 60 -68 L 60 68 L 54 68"
+          fill="none" :stroke="card.artColors[3]" stroke-width="0.65" opacity="0.35"/>
+        <text x="63" y="4" font-family="'Courier New', monospace" font-size="5.5"
+          :fill="card.artColors[3]" opacity="0.48" text-anchor="start"
+          transform="rotate(90, 63, 4)" letter-spacing="0.08em">CALLUS ZONE</text>
+
+        <!-- Magnification label -->
+        <text x="-78" y="-74" font-family="'Courier New', monospace" font-size="5.5"
+          :fill="card.artColors[3]" opacity="0.50" text-anchor="start" letter-spacing="0.06em">17×</text>
+
+        <!-- Scale bar (bottom right) -->
+        <line x1="44" y1="76" x2="68" y2="76" :stroke="card.artColors[1]" stroke-width="0.9" opacity="0.50"/>
+        <line x1="44" y1="73" x2="44" y2="79" :stroke="card.artColors[1]" stroke-width="0.9" opacity="0.50"/>
+        <line x1="68" y1="73" x2="68" y2="79" :stroke="card.artColors[1]" stroke-width="0.9" opacity="0.50"/>
+        <text x="56" y="72" font-family="'Courier New', monospace" font-size="5"
+          :fill="card.artColors[1]" opacity="0.45" text-anchor="middle">0.5 mm</text>
+
+        <!-- Classification footer -->
+        <text x="0" y="93" font-family="'Courier New', monospace" font-size="6.5"
+          :fill="card.artColors[1]" opacity="0.58" text-anchor="middle" letter-spacing="0.10em">
+          R.INDEX · ULNAR LOOP · CALLUS MCP3
+        </text>
+        <text x="0" y="102" font-family="'Courier New', monospace" font-size="5.5"
+          :fill="card.artColors[3]" opacity="0.42" text-anchor="middle" letter-spacing="0.08em">
+          DERMOGLYPH SPECIMEN · ADAPTIVE RIDGE STRUCTURE
+        </text>
       </g>
 
       <!-- 17: The Circle — people arranged in ring from above -->
@@ -623,6 +718,172 @@
         <rect x="-60" y="50" width="120" height="24" rx="3" :fill="card.artColors[0]" opacity="0.12" />
         <text x="0" y="67" font-family="'Courier New', monospace" font-size="11" :fill="card.artColors[0]" opacity="0.75" text-anchor="middle" letter-spacing="0.12em">TOTAL: 37</text>
         <text x="0" y="88" font-family="'Courier New', monospace" font-size="7" :fill="card.artColors[1]" opacity="0.50" text-anchor="middle" letter-spacing="0.10em">VERIFIED EVENTS ONLY · NO ESTIMATES</text>
+      </g>
+
+      <!-- 23: Stardust — stellar nucleosynthesis debris field -->
+      <g v-else-if="card.id === 23">
+        <!-- Wispy nebula cloud behind dots -->
+        <ellipse cx="140" cy="151" rx="110" ry="90"
+          :fill="card.artColors[0]" fill-opacity="0.04"/>
+        <ellipse cx="100" cy="130" rx="60" ry="50"
+          :fill="card.artColors[2]" fill-opacity="0.04"/>
+        <!-- Stardust particles — H(white), Na(yellow), Ca(orange), O(blue), Fe(red), C(green) -->
+        <g v-for="(d, i) in dustDots" :key="'d'+i">
+          <circle :cx="d.x" :cy="d.y" :r="d.r"
+            :fill="card.artColors[d.c]" :fill-opacity="d.o"/>
+        </g>
+        <!-- Element labels near a few prominent dots -->
+        <text x="92"  y="95"  font-family="monospace" font-size="6" :fill="card.artColors[0]" opacity="0.65">Na</text>
+        <text x="175" y="118" font-family="monospace" font-size="6" :fill="card.artColors[2]" opacity="0.60">O</text>
+        <text x="58"  y="155" font-family="monospace" font-size="6" :fill="card.artColors[3]" opacity="0.58">Fe</text>
+        <text x="200" y="175" font-family="monospace" font-size="6" :fill="card.artColors[4]" opacity="0.60">C</text>
+        <text x="130" y="210" font-family="monospace" font-size="6" :fill="card.artColors[1]" opacity="0.55">Ca</text>
+        <text x="60"  y="200" font-family="monospace" font-size="6" :fill="card.artColors[5]" opacity="0.65">H</text>
+        <text x="140" y="70"  font-family="monospace" font-size="6" :fill="card.artColors[5]" opacity="0.60">H</text>
+        <!-- Caption -->
+        <text x="140" y="245" font-family="'Courier New', monospace" font-size="6.5"
+          :fill="card.artColors[0]" opacity="0.50" text-anchor="middle" letter-spacing="0.10em">
+          STELLAR NUCLEOSYNTHESIS · ⊙ → SN → YOU
+        </text>
+      </g>
+
+      <!-- 24: Moonbeams — diffracted moonlight rays -->
+      <g v-else-if="card.id === 24">
+        <!-- Moon disc -->
+        <radialGradient id="moon-grd" cx="45%" cy="38%" r="60%">
+          <stop offset="0%" stop-color="#ffffff" stop-opacity="0.95"/>
+          <stop offset="70%" stop-color="#c8d8f0" stop-opacity="0.80"/>
+          <stop offset="100%" stop-color="#6070a0" stop-opacity="0.50"/>
+        </radialGradient>
+        <circle cx="140" cy="95" r="42" fill="url(#moon-grd)"/>
+        <!-- Moon terminator -->
+        <path d="M 140 53 A 42 42 0 0 0 140 137" fill="rgba(0,10,30,0.28)"/>
+        <!-- Diffraction interference rings around moon -->
+        <circle v-for="ri in 5" :key="'mr'+ri" cx="140" cy="95" :r="42 + ri*14"
+          fill="none" :stroke="card.artColors[0]" stroke-width="0.4"
+          :stroke-opacity="0.12 - ri*0.02"/>
+        <!-- Light rays emanating downward from moon -->
+        <g v-for="(ray, ri) in moonRays" :key="'ray'+ri" :opacity="ray.o">
+          <line :x1="ray.x1" :y1="ray.y1" :x2="ray.x2" :y2="ray.y2"
+            :stroke="card.artColors[0]" :stroke-width="ray.w"/>
+          <!-- Ray diffraction shimmer lines -->
+          <line :x1="ray.x1 + ray.dx" :y1="ray.y1" :x2="ray.x2 + ray.dx*2.5" :y2="ray.y2"
+            :stroke="card.artColors[1]" :stroke-width="ray.w*0.4" stroke-opacity="0.35"/>
+          <line :x1="ray.x1 - ray.dx" :y1="ray.y1" :x2="ray.x2 - ray.dx*2.5" :y2="ray.y2"
+            :stroke="card.artColors[1]" :stroke-width="ray.w*0.4" stroke-opacity="0.35"/>
+        </g>
+        <!-- Light scatter at the base -->
+        <ellipse cx="140" cy="230" rx="80" ry="10"
+          :fill="card.artColors[0]" fill-opacity="0.06"/>
+        <!-- Illuminance label -->
+        <text x="140" y="248" font-family="'Courier New', monospace" font-size="6.5"
+          :fill="card.artColors[0]" opacity="0.50" text-anchor="middle" letter-spacing="0.08em">
+          0.001 LUX · 384,400 km · REFLECTED
+        </text>
+      </g>
+
+      <!-- 25: Cosmic Energy — plasma filaments and dark energy field -->
+      <g v-else-if="card.id === 25">
+        <!-- Dark energy field background haze -->
+        <radialGradient id="de-grd" cx="50%" cy="50%" r="60%">
+          <stop offset="0%" :stop-color="card.artColors[0]" stop-opacity="0.12"/>
+          <stop offset="100%" stop-color="#000" stop-opacity="0"/>
+        </radialGradient>
+        <rect x="10" y="46" width="260" height="210" fill="url(#de-grd)"/>
+        <!-- Plasma filament arcs — cosmic energy streams -->
+        <path v-for="(fil, i) in plasmaFilaments" :key="'pf'+i"
+          :d="fil.d" fill="none"
+          :stroke="card.artColors[fil.c]"
+          :stroke-width="fil.w"
+          :stroke-opacity="fil.o"
+          stroke-linecap="round"/>
+        <!-- Central energy burst -->
+        <circle cx="140" cy="151" r="4" :fill="card.artColors[3]" opacity="0.90"/>
+        <circle cx="140" cy="151" r="12" fill="none" :stroke="card.artColors[3]" stroke-width="0.6" opacity="0.55"/>
+        <circle cx="140" cy="151" r="24" fill="none" :stroke="card.artColors[0]" stroke-width="0.4" opacity="0.30"/>
+        <!-- Vacuum energy density annotation -->
+        <text x="140" y="245" font-family="'Courier New', monospace" font-size="6.5"
+          :fill="card.artColors[0]" opacity="0.55" text-anchor="middle" letter-spacing="0.06em">
+          Λ = 1.1 × 10⁻⁵² m⁻² · DARK ENERGY · 68%
+        </text>
+      </g>
+
+      <!-- 26: Quantum Gravity — warped spacetime grid -->
+      <g v-else-if="card.id === 26">
+        <!-- Warped horizontal grid lines -->
+        <path v-for="(p, i) in gravityHLines" :key="'gh'+i"
+          :d="p" fill="none" :stroke="card.artColors[0]"
+          :stroke-width="0.55" :stroke-opacity="0.28"/>
+        <!-- Warped vertical grid lines -->
+        <path v-for="(p, i) in gravityVLines" :key="'gv'+i"
+          :d="p" fill="none" :stroke="card.artColors[0]"
+          :stroke-width="0.55" :stroke-opacity="0.28"/>
+        <!-- Gravitational wave ripples from central mass -->
+        <circle v-for="ri in 4" :key="'gwr'+ri"
+          cx="140" cy="151" :r="ri*22"
+          fill="none" :stroke="card.artColors[4]"
+          stroke-width="0.4" :stroke-opacity="0.18 - ri*0.03"/>
+        <!-- Central mass -->
+        <radialGradient id="mass-grd" cx="40%" cy="38%" r="60%">
+          <stop offset="0%" stop-color="#ffffff" stop-opacity="0.90"/>
+          <stop offset="40%" :stop-color="card.artColors[0]" stop-opacity="0.80"/>
+          <stop offset="100%" stop-color="#000000" stop-opacity="0.95"/>
+        </radialGradient>
+        <circle cx="140" cy="151" r="14" fill="url(#mass-grd)"/>
+        <!-- Planck scale label -->
+        <text x="10" y="58" font-family="'Courier New', monospace" font-size="5.5"
+          :fill="card.artColors[0]" opacity="0.50">ℓₚ = 1.616 × 10⁻³⁵ m</text>
+        <text x="140" y="245" font-family="'Courier New', monospace" font-size="6.5"
+          :fill="card.artColors[0]" opacity="0.55" text-anchor="middle" letter-spacing="0.06em">
+          SPACETIME CURVATURE · Gμν + Λgμν = 8πTμν
+        </text>
+      </g>
+
+      <!-- 27: Paired Particles — quantum entanglement -->
+      <g v-else-if="card.id === 27">
+        <!-- Left particle: spin-up (red) -->
+        <circle cx="75" cy="151" r="26" :fill="card.artColors[0]" fill-opacity="0.18"
+          :stroke="card.artColors[0]" stroke-width="1.2" stroke-opacity="0.70"/>
+        <!-- Left spin arrow (up) -->
+        <line x1="75" y1="165" x2="75" y2="140" :stroke="card.artColors[0]" stroke-width="2" stroke-opacity="0.80" stroke-linecap="round"/>
+        <polyline points="70,145 75,138 80,145" :stroke="card.artColors[0]" stroke-width="1.8" fill="none" stroke-linejoin="round" stroke-opacity="0.80"/>
+        <text x="75" y="183" font-family="serif" font-size="13" text-anchor="middle" :fill="card.artColors[0]" opacity="0.80">↑</text>
+        <!-- Left particle label -->
+        <text x="75" y="128" font-family="'Courier New', monospace" font-size="8"
+          text-anchor="middle" :fill="card.artColors[0]" opacity="0.70">A</text>
+        <!-- Right particle: spin-down (blue) -->
+        <circle cx="205" cy="151" r="26" :fill="card.artColors[1]" fill-opacity="0.18"
+          :stroke="card.artColors[1]" stroke-width="1.2" stroke-opacity="0.70"/>
+        <!-- Right spin arrow (down) -->
+        <line x1="205" y1="137" x2="205" y2="162" :stroke="card.artColors[1]" stroke-width="2" stroke-opacity="0.80" stroke-linecap="round"/>
+        <polyline points="200,157 205,164 210,157" :stroke="card.artColors[1]" stroke-width="1.8" fill="none" stroke-linejoin="round" stroke-opacity="0.80"/>
+        <text x="205" y="119" font-family="serif" font-size="13" text-anchor="middle" :fill="card.artColors[1]" opacity="0.80">↓</text>
+        <!-- Right particle label -->
+        <text x="205" y="128" font-family="'Courier New', monospace" font-size="8"
+          text-anchor="middle" :fill="card.artColors[1]" opacity="0.70">B</text>
+        <!-- Quantum correlation connection (dashed gold) -->
+        <line x1="101" y1="151" x2="179" y2="151"
+          :stroke="card.artColors[2]" stroke-width="1.0"
+          stroke-dasharray="5,4" stroke-opacity="0.70"/>
+        <!-- Entanglement "non-local" indicator -->
+        <text x="140" y="146" font-family="serif" font-size="9"
+          text-anchor="middle" :fill="card.artColors[2]" opacity="0.80">∞</text>
+        <!-- State vector notation -->
+        <text x="140" y="95" font-family="'Courier New', monospace" font-size="7.5"
+          text-anchor="middle" :fill="card.artColors[4]" opacity="0.70">|ψ⟩ = (|↑↓⟩ − |↓↑⟩) / √2</text>
+        <!-- Separation indicator -->
+        <line x1="75" y1="200" x2="205" y2="200" :stroke="card.artColors[2]" stroke-width="0.5" opacity="0.35"/>
+        <text x="140" y="213" font-family="'Courier New', monospace" font-size="6"
+          text-anchor="middle" :fill="card.artColors[2]" opacity="0.55">SEPARATION: ANY DISTANCE</text>
+        <!-- Probability collapse arrows -->
+        <path d="M 50 90 Q 75 70 100 85" fill="none" :stroke="card.artColors[0]" stroke-width="0.6" stroke-opacity="0.40" stroke-dasharray="3,3"/>
+        <path d="M 230 90 Q 205 70 180 85" fill="none" :stroke="card.artColors[1]" stroke-width="0.6" stroke-opacity="0.40" stroke-dasharray="3,3"/>
+        <text x="50"  y="88" font-family="'Courier New', monospace" font-size="6" :fill="card.artColors[0]" opacity="0.50">MEASURE</text>
+        <text x="188" y="88" font-family="'Courier New', monospace" font-size="6" :fill="card.artColors[1]" opacity="0.50">COLLAPSE</text>
+        <text x="140" y="245" font-family="'Courier New', monospace" font-size="6.5"
+          :fill="card.artColors[2]" opacity="0.55" text-anchor="middle" letter-spacing="0.08em">
+          SPOOKY ACTION AT A DISTANCE · EPR · BELL
+        </text>
       </g>
 
       <!-- 22: Margin Notes — page with handwritten annotations -->
@@ -847,6 +1108,120 @@ const stitchPoints = (() => {
     }
   }
   return pts
+})()
+
+// ── Cosmic Phenomena edition (cards 23-27) computed data ─────────────────────
+
+// Card 23: Stardust — scattered stellar element particles
+const dustDots = (() => {
+  const rng = (n: number) => ((Math.sin(n * 127.1) * 43758.5) % 1 + 1) / 2
+  // artColors indices: 0=Na(yellow) 1=Ca(orange) 2=O(blue) 3=Fe(red) 4=C(green) 5=H(white)
+  const elementWeights = [0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 5]  // more H
+  const dots: { x: number; y: number; r: number; o: number; c: number }[] = []
+  for (let i = 0; i < 70; i++) {
+    // Cloud distribution: more dots near center, fewer at edges
+    const angle  = rng(i * 3) * Math.PI * 2
+    const radius = 20 + rng(i * 3 + 1) * 100
+    const cx     = 140 + Math.cos(angle) * radius * (0.7 + rng(i) * 0.5)
+    const cy     = 151 + Math.sin(angle) * radius * 0.7
+    if (cx < 15 || cx > 265 || cy < 50 || cy > 255) continue
+    dots.push({
+      x: cx,
+      y: cy,
+      r: 0.8 + rng(i * 3 + 2) * 2.8,
+      o: 0.30 + rng(i * 7) * 0.60,
+      c: elementWeights[Math.floor(rng(i * 11) * elementWeights.length)]!,
+    })
+  }
+  return dots
+})()
+
+// Card 24: Moonbeams — 8 diffracted light rays
+const moonRays = (() => {
+  const rays: { x1: number; y1: number; x2: number; y2: number; w: number; o: number; dx: number }[] = []
+  const nRays = 8
+  for (let i = 0; i < nRays; i++) {
+    const angle = -Math.PI * 0.5 + (i - nRays / 2 + 0.5) * (Math.PI * 0.55 / nRays)
+    const intensity = 1 - Math.abs(i - nRays / 2 + 0.5) / (nRays / 2)
+    rays.push({
+      x1: 140 + Math.cos(angle) * 44,
+      y1: 95  + Math.sin(angle) * 44,
+      x2: 140 + Math.cos(angle) * 190,
+      y2: 95  + Math.sin(angle) * 190,
+      w:  0.8 + intensity * 2.8,
+      o:  0.12 + intensity * 0.28,
+      dx: Math.cos(angle + Math.PI * 0.5) * 6,
+    })
+  }
+  return rays
+})()
+
+// Card 25: Cosmic Energy — plasma filament paths
+const plasmaFilaments = (() => {
+  const rng  = (n: number) => ((Math.sin(n * 91.3) * 43758.5) % 1 + 1) / 2
+  const fils: { d: string; c: number; w: number; o: number }[] = []
+  const cx = 140, cy = 151
+  for (let i = 0; i < 18; i++) {
+    const angle  = rng(i * 4) * Math.PI * 2
+    const length = 40 + rng(i * 4 + 1) * 100
+    const bend   = (rng(i * 4 + 2) - 0.5) * 80
+    const ex     = cx + Math.cos(angle) * length
+    const ey     = cy + Math.sin(angle) * length
+    const mx     = cx + Math.cos(angle + 0.4) * length * 0.5 + Math.cos(angle + Math.PI * 0.5) * bend
+    const my     = cy + Math.sin(angle + 0.4) * length * 0.5 + Math.sin(angle + Math.PI * 0.5) * bend
+    fils.push({
+      d: `M ${cx} ${cy} Q ${mx} ${my} ${ex} ${ey}`,
+      c: Math.floor(rng(i * 7) * 4),  // artColors 0-3
+      w: 0.5 + rng(i * 3) * 2.0,
+      o: 0.25 + rng(i * 5) * 0.55,
+    })
+    // Secondary branch off the filament
+    if (rng(i * 2) > 0.5) {
+      const bx = cx + (ex - cx) * 0.5 + Math.cos(angle - 0.6) * length * 0.4
+      const by = cy + (ey - cy) * 0.5 + Math.sin(angle - 0.6) * length * 0.4
+      fils.push({ d: `M ${mx} ${my} L ${bx} ${by}`, c: (Math.floor(rng(i*9)*4)+1)%4, w: 0.4, o: 0.20 })
+    }
+  }
+  return fils
+})()
+
+// Card 26: Quantum Gravity — warped spacetime grid paths
+const { gravityHLines, gravityVLines } = (() => {
+  const cx = 140, cy = 151, M = 3200, SOFT = 600
+  const SAMPLES = 22
+
+  function warp(x: number, y: number): [number, number] {
+    const dx = cx - x, dy = cy - y
+    const r2  = dx * dx + dy * dy
+    const fac = M / ((r2 + SOFT) * Math.sqrt(r2 + SOFT) * 0.018)
+    return [x + dx * fac, y + dy * fac]
+  }
+
+  const hLines: string[] = []
+  for (let row = 0; row <= 10; row++) {
+    const y0 = 56 + row * 20
+    const pts: string[] = []
+    for (let s = 0; s <= SAMPLES; s++) {
+      const x0 = 15 + s * (250 / SAMPLES)
+      const [wx, wy] = warp(x0, y0)
+      pts.push(`${wx.toFixed(1)},${wy.toFixed(1)}`)
+    }
+    hLines.push('M ' + pts.join(' L '))
+  }
+
+  const vLines: string[] = []
+  for (let col = 0; col <= 12; col++) {
+    const x0 = 15 + col * (250 / 12)
+    const pts: string[] = []
+    for (let s = 0; s <= SAMPLES; s++) {
+      const y0 = 56 + s * (200 / SAMPLES)
+      const [wx, wy] = warp(x0, y0)
+      pts.push(`${wx.toFixed(1)},${wy.toFixed(1)}`)
+    }
+    vLines.push('M ' + pts.join(' L '))
+  }
+
+  return { gravityHLines: hLines, gravityVLines: vLines }
 })()
 
 // Settlement background stars (card 9)

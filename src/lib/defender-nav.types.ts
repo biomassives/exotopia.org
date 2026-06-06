@@ -95,7 +95,7 @@ export interface PlanetStripEntry {
 
 export type SkyObjectType =
   | 'star' | 'companion_tight' | 'companion_wide' | 'outer_companion'
-  | 'moon' | 'planet' | 'settlement' | 'pyramid' | 'gallery'
+  | 'moon' | 'planet' | 'settlement' | 'pyramid' | 'gallery' | 'blackhole_station'
 
 export interface SkyObjectEntry {
   name:     string
@@ -171,7 +171,7 @@ export interface DefenderTarget {
   // context_zoom — emitted when the user clicks the Earth↔System inset
   // returnToPrev — emitted when the user clicks the ◄ PREV button
   // (both handled in parent; DefenderNav does not navigate itself)
-  type:         'planet' | 'lagrange' | 'moon' | 'star' | 'azimuth' | 'cluster' | 'gallery' | 'companion'
+  type:         'planet' | 'lagrange' | 'moon' | 'star' | 'azimuth' | 'cluster' | 'gallery' | 'companion' | 'blackhole_station'
   id:           string
   angle?:       number
   radius?:      number
