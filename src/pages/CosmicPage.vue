@@ -2113,7 +2113,9 @@ function buildSuperclusters() {
     color: 0xffaa44, transparent: true, opacity: 0.75,
     depthWrite: false, blending: THREE.AdditiveBlending,
   })
-  pageGroup.add(Object.assign(new THREE.Mesh(gaDotGeo, gaDotMat), { position: gaPos.clone() }))
+  const gaDotMesh = new THREE.Mesh(gaDotGeo, gaDotMat)
+  gaDotMesh.position.copy(gaPos)
+  pageGroup.add(gaDotMesh)
 
   // Outer diffuse glow
   const gaGlowGeo = new THREE.SphereGeometry(0.18, 8, 6)
@@ -2121,7 +2123,9 @@ function buildSuperclusters() {
     color: 0xff6611, transparent: true, opacity: 0.12,
     depthWrite: false, blending: THREE.AdditiveBlending,
   })
-  pageGroup.add(Object.assign(new THREE.Mesh(gaGlowGeo, gaGlowMat), { position: gaPos.clone() }))
+  const gaGlowMesh = new THREE.Mesh(gaGlowGeo, gaGlowMat)
+  gaGlowMesh.position.copy(gaPos)
+  pageGroup.add(gaGlowMesh)
 
   addTextMarker(gaPos.clone().add(new THREE.Vector3(0, 0.42, 0)), 'Great Attractor', 0xff7722, 0.60)
 }

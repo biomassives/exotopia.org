@@ -1,5 +1,5 @@
 <template>
-  <q-page class="bg-black" style="height:100vh;overflow:hidden">
+  <q-page class="bg-black" style="height:100vh;overflow:hidden" @click="onCanvasClick">
 
     <!-- ── Slow-connection fallback — skip Three.js entirely on 2G ────── -->
     <div v-if="isSlowConnection" class="low-bw-fallback">
@@ -13,8 +13,6 @@
       </div>
       <div class="lbw-note">{{ lbwNote }}</div>
     </div>
-
-    <canvas v-else ref="canvas" class="three-canvas" @click="onCanvasClick" />
 
     <!-- ── Cluster label overlay — clickable, navigate to cosmic view ── -->
     <div class="labels-layer">
@@ -193,8 +191,8 @@
 import { ref, computed, shallowRef, onMounted, onUnmounted } from 'vue'
 import { useRouter }     from 'vue-router'
 import * as THREE        from 'three'
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import gsap              from 'gsap'
+import { useVizRenderer } from 'src/composables/useVizRenderer'
 import { useGalaxyStore } from 'src/stores/galaxy'
 import { usePortalStore } from 'src/stores/portal'
 import type { Planet }   from 'src/stores/galaxy'
@@ -216,9 +214,9 @@ const router      = useRouter()
 const galaxyStore = useGalaxyStore()
 const portalStore = usePortalStore()
 
-// ── Three.js root state ───────────────────────────────────────────────────────
+// ── Three.js shared renderer ──────────────────────────────────────────────────
 
-const canvas      = ref<HTMLCanvasElement | null>(null)
+const viz         = useVizRenderer()
 const defenderNav = ref<InstanceType<typeof DefenderNav> | null>(null)
 
 // ── Bandwidth detection ───────────────────────────────────────────────────────
@@ -382,12 +380,11 @@ function goToCluster(name: string) {
 
 function onCanvasClick(e: MouseEvent) {
   if (panelOpen.value) { panelOpen.value = false; return }
+  if (!camera) return
 
   // Raycast the welcome-page scene for cluster sphere hits
-  if (!canvas.value) return
-  const el   = canvas.value
-  const ndcX =  (e.clientX / el.clientWidth)  * 2 - 1
-  const ndcY = -(e.clientY / el.clientHeight) * 2 + 1
+  const ndcX =  (e.clientX / window.innerWidth)  * 2 - 1
+  const ndcY = -(e.clientY / window.innerHeight) * 2 + 1
   raycaster.setFromCamera({ x: ndcX, y: ndcY }, camera)
 
   const hits = raycaster.intersectObjects(hitMeshes, false)
@@ -544,11 +541,14 @@ const activeSnCount = computed(() => {
 
 // ── Three.js module-level state ───────────────────────────────────────────────
 
-let renderer:  THREE.WebGLRenderer
-let scene:     THREE.Scene
-let camera:    THREE.PerspectiveCamera
-let controls:  OrbitControls
-let animId:    number
+// pageGroup holds all WelcomePage scene objects — added to / removed from shared scene
+const pageGroup = new THREE.Group()
+let   stopTick: (() => void) | null = null
+
+let renderer:  THREE.WebGLRenderer | null = null
+let scene:     THREE.Scene          | null = null
+let camera:    THREE.PerspectiveCamera | null = null
+let controls:  ReturnType<typeof useVizRenderer>['controls'] = null
 let raycaster  = new THREE.Raycaster()
 let hitMeshes: THREE.Mesh[] = []   // invisible click targets for clusters
 
@@ -581,7 +581,7 @@ function buildBackground() {
   const geo = new THREE.BufferGeometry()
   geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3))
   geo.setAttribute('color',    new THREE.Float32BufferAttribute(col, 3))
-  scene.add(new THREE.Points(geo, new THREE.PointsMaterial({
+  pageGroup.add(new THREE.Points(geo, new THREE.PointsMaterial({
     size: 0.30, vertexColors: true, transparent: true, opacity: 0.50, depthWrite: false,
   })))
 }
@@ -640,13 +640,13 @@ function buildVoids() {
       color: colA, transparent: true, opacity: 0.032,
       side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending,
     }))
-    faceA.position.copy(pos); scene.add(faceA)
+    faceA.position.copy(pos); pageGroup.add(faceA)
 
     const faceB = new THREE.Mesh(polyGeo, new THREE.MeshBasicMaterial({
       color: colB, transparent: true, opacity: 0.018,
       side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending,
     }))
-    faceB.position.copy(pos); scene.add(faceB)
+    faceB.position.copy(pos); pageGroup.add(faceB)
 
     // ── Primary edge lines — solid glow structure ─────────────────────────────
     const edgeGeo = new THREE.EdgesGeometry(polyGeo, 8)
@@ -657,7 +657,7 @@ function buildVoids() {
     })
     const edgeMesh = new THREE.LineSegments(edgeGeo, edgeMat)
     edgeMesh.position.copy(pos)
-    scene.add(edgeMesh)
+    pageGroup.add(edgeMesh)
     voidEdgeMats.push({ mat: edgeMat, phase })
 
     // ── Secondary glow edge — additive complement colour ─────────────────────
@@ -667,7 +667,7 @@ function buildVoids() {
     })
     const glowMesh = new THREE.LineSegments(edgeGeo, glowMat)
     glowMesh.position.copy(pos)
-    scene.add(glowMesh)
+    pageGroup.add(glowMesh)
     voidGlowMats.push({ mat: glowMat, phase: phase + Math.PI * 0.55 })
 
     // ── Iridescent Fresnel membrane sphere (all voids r ≥ 0.6) ───────────────
@@ -692,7 +692,7 @@ function buildVoids() {
         meniscusMat,
       )
       shellMesh.position.copy(pos)
-      scene.add(shellMesh)
+      pageGroup.add(shellMesh)
 
       // Dark inner void — true emptiness
       const innerFill = new THREE.Mesh(
@@ -703,7 +703,7 @@ function buildVoids() {
         }),
       )
       innerFill.position.copy(pos)
-      scene.add(innerFill)
+      pageGroup.add(innerFill)
     }
   }
 }
@@ -716,11 +716,11 @@ function buildBlackHoles() {
     // Event horizon
     const horizon = new THREE.Mesh(new THREE.SphereGeometry(bh.diskInner * 0.55, 14, 14), new THREE.MeshBasicMaterial({ color: 0x000000 }))
     horizon.position.copy(pos)
-    scene.add(horizon)
+    pageGroup.add(horizon)
 
     // Lensing halo
     const lens = new THREE.Mesh(new THREE.SphereGeometry(bh.diskInner * 1.05, 14, 14), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.09, depthWrite: false, blending: THREE.AdditiveBlending }))
-    lens.position.copy(pos); scene.add(lens)
+    lens.position.copy(pos); pageGroup.add(lens)
 
     // Accretion disk
     const disk = new THREE.Mesh(
@@ -730,7 +730,7 @@ function buildBlackHoles() {
     disk.position.copy(pos)
     disk.rotation.x = Math.PI / 2 + (Math.random() - 0.5) * 0.5
     disk.rotation.z = (Math.random() - 0.5) * 0.35
-    scene.add(disk); accretionDisks.push(disk)
+    pageGroup.add(disk); accretionDisks.push(disk)
 
     // Jets
     const jetUp  = new THREE.Vector3(0, 1, 0).applyEuler(disk.rotation)
@@ -739,9 +739,9 @@ function buildBlackHoles() {
       const jet = new THREE.Mesh(new THREE.ConeGeometry(bh.diskInner * 0.5, bh.jetLen, 8, 1, true), jetMat.clone())
       jet.position.copy(pos).addScaledVector(jetUp, sign * bh.jetLen * 0.5)
       jet.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), sign > 0 ? jetUp : jetUp.clone().negate())
-      scene.add(jet); quasarJets.push(jet)
+      pageGroup.add(jet); quasarJets.push(jet)
     }
-    const bhLight = new THREE.PointLight(bh.diskColor, 0.7, bh.diskOuter * 14); bhLight.position.copy(pos); scene.add(bhLight)
+    const bhLight = new THREE.PointLight(bh.diskColor, 0.7, bh.diskOuter * 14); bhLight.position.copy(pos); pageGroup.add(bhLight)
   }
 
   // BH cluster
@@ -753,16 +753,16 @@ function buildBlackHoles() {
     const mini   = 0.05 + i * 0.012
 
     const bhMesh = new THREE.Mesh(new THREE.SphereGeometry(mini * 0.55, 8, 8), new THREE.MeshBasicMaterial({ color: 0x050505 }))
-    bhMesh.position.copy(bhPos); scene.add(bhMesh)
+    bhMesh.position.copy(bhPos); pageGroup.add(bhMesh)
 
     const miniDisk = new THREE.Mesh(new THREE.TorusGeometry(mini, mini * 0.38, 6, 28), new THREE.MeshBasicMaterial({ color: 0xff6611, transparent: true, opacity: 0.72, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }))
     miniDisk.position.copy(bhPos); miniDisk.rotation.x = Math.PI / 2 + 0.25
-    scene.add(miniDisk); accretionDisks.push(miniDisk)
+    pageGroup.add(miniDisk); accretionDisks.push(miniDisk)
     bhClusterOrbs.push({ mesh: bhMesh, angle, r: orbitR, speed: 0.18 + i * 0.07 })
   }
 
   const haze = new THREE.Mesh(new THREE.SphereGeometry(0.65, 10, 10), new THREE.MeshBasicMaterial({ color: 0xff4400, transparent: true, opacity: 0.045, depthWrite: false, blending: THREE.AdditiveBlending }))
-  haze.position.copy(BH_CLUSTER_POS); scene.add(haze)
+  haze.position.copy(BH_CLUSTER_POS); pageGroup.add(haze)
 }
 
 function buildQuasars() {
@@ -771,11 +771,11 @@ function buildQuasars() {
     const col = new THREE.Color(q.color)
 
     const core = new THREE.Mesh(new THREE.SphereGeometry(0.05, 16, 16), new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: 3.5 }))
-    core.position.copy(pos); scene.add(core)
+    core.position.copy(pos); pageGroup.add(core)
 
     for (const [r, op] of [[0.14, 0.42], [0.32, 0.20], [0.7, 0.08], [1.4, 0.03]] as [number,number][]) {
       const g = new THREE.Mesh(new THREE.SphereGeometry(r, 8, 8), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: op, depthWrite: false, blending: THREE.AdditiveBlending }))
-      g.position.copy(pos); scene.add(g)
+      g.position.copy(pos); pageGroup.add(g)
     }
 
     const jetDir = new THREE.Vector3(...q.jetDir).normalize()
@@ -784,9 +784,9 @@ function buildQuasars() {
       const jet = new THREE.Mesh(new THREE.ConeGeometry(0.05, q.jetLen, 8, 1, true), jetMat.clone())
       jet.position.copy(pos).addScaledVector(jetDir, sign * q.jetLen * 0.5)
       jet.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), sign > 0 ? jetDir : jetDir.clone().negate())
-      scene.add(jet); quasarJets.push(jet)
+      pageGroup.add(jet); quasarJets.push(jet)
     }
-    const qLight = new THREE.PointLight(q.color, 1.4, q.jetLen * 5); qLight.position.copy(pos); scene.add(qLight)
+    const qLight = new THREE.PointLight(q.color, 1.4, q.jetLen * 5); qLight.position.copy(pos); pageGroup.add(qLight)
   }
 }
 
@@ -799,20 +799,20 @@ function buildSupernovae() {
     const group: SNovaGroup = { meshes: [], epochMyr: sn.epochMyr, lifespanMyr: sn.lifespanMyr }
 
     const core = new THREE.Mesh(new THREE.SphereGeometry(sn.r * 0.38, 12, 12), new THREE.MeshBasicMaterial({ color: sn.coreCol, transparent: true, opacity: opC, depthWrite: false, blending: THREE.AdditiveBlending }))
-    core.position.copy(pos); scene.add(core); group.meshes.push(core)
+    core.position.copy(pos); pageGroup.add(core); group.meshes.push(core)
 
     const shell = new THREE.Mesh(new THREE.SphereGeometry(sn.r, 22, 18), new THREE.MeshBasicMaterial({ color: sn.shellCol, wireframe: true, transparent: true, opacity: opS, depthWrite: false }))
-    shell.position.copy(pos); scene.add(shell); group.meshes.push(shell)
+    shell.position.copy(pos); pageGroup.add(shell); group.meshes.push(shell)
     novaShells.push({ mesh: shell, phase })
 
     const halo = new THREE.Mesh(new THREE.SphereGeometry(sn.r * 1.3, 8, 8), new THREE.MeshBasicMaterial({ color: sn.shellCol, transparent: true, opacity: opS * 0.4, depthWrite: false, blending: THREE.AdditiveBlending }))
-    halo.position.copy(pos); scene.add(halo); group.meshes.push(halo)
+    halo.position.copy(pos); pageGroup.add(halo); group.meshes.push(halo)
 
     if (sn.age === 'young') {
       const ring = new THREE.Mesh(new THREE.TorusGeometry(sn.r * 0.92, sn.r * 0.055, 8, 64), new THREE.MeshBasicMaterial({ color: sn.shellCol, transparent: true, opacity: 0.75, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }))
       ring.position.copy(pos); ring.rotation.x = Math.PI / 2 + (Math.random() - 0.5) * 0.8
-      scene.add(ring); group.meshes.push(ring)
-      const snLight = new THREE.PointLight(sn.shellCol, 0.55, sn.r * 12); snLight.position.copy(pos); scene.add(snLight)
+      pageGroup.add(ring); group.meshes.push(ring)
+      const snLight = new THREE.PointLight(sn.shellCol, 0.55, sn.r * 12); snLight.position.copy(pos); pageGroup.add(snLight)
     }
 
     // Contemporary SNe start visible; historical ones start hidden
@@ -886,7 +886,7 @@ function buildLaniakea() {
     }))
     faceMesh.position.copy(gaPos)
     faceMesh.renderOrder = rOrd
-    scene.add(faceMesh)
+    pageGroup.add(faceMesh)
     laniakeaObjs.push(faceMesh)
 
     // Wireframe overlay — EdgesGeometry on the same scaled geo
@@ -902,7 +902,7 @@ function buildLaniakea() {
     }))
     wireMesh.position.copy(gaPos)
     wireMesh.renderOrder = rOrd - 2
-    scene.add(wireMesh)
+    pageGroup.add(wireMesh)
     laniakeaObjs.push(wireMesh)
   }
 
@@ -928,7 +928,7 @@ function buildLaniakea() {
     )
     m.position.copy(gaPos)
     m.renderOrder = rOrd
-    scene.add(m)
+    pageGroup.add(m)
     laniakeaObjs.push(m)
   }
 
@@ -968,23 +968,23 @@ function buildLaniakea() {
     const geo   = new THREE.BufferGeometry().setFromPoints(pts)
     const line  = new THREE.Line(geo, laniakeaFlowMat)
     line.renderOrder = 8
-    scene.add(line)
+    pageGroup.add(line)
     laniakeaObjs.push(line)
   }
 
   // Warm point light near the GA — adds a subtle amber tint to nearby clusters
   const gaLight = new THREE.PointLight(0xff8820, 0.28, 9)
   gaLight.position.copy(gaPos)
-  scene.add(gaLight)
+  pageGroup.add(gaLight)
   laniakeaObjs.push(gaLight)
 }
 
 function buildClusters() {
   // Milky Way
   const mwCol = new THREE.Color(0xffd480)
-  scene.add(new THREE.Mesh(new THREE.SphereGeometry(0.20, 14, 14), new THREE.MeshStandardMaterial({ color: mwCol, emissive: mwCol, emissiveIntensity: 1.3 })))
-  scene.add(new THREE.Mesh(new THREE.SphereGeometry(0.65, 8, 8), new THREE.MeshBasicMaterial({ color: mwCol, transparent: true, opacity: 0.09, depthWrite: false, blending: THREE.AdditiveBlending })))
-  scene.add(new THREE.PointLight(0xffd480, 0.8, 12))
+  pageGroup.add(new THREE.Mesh(new THREE.SphereGeometry(0.20, 14, 14), new THREE.MeshStandardMaterial({ color: mwCol, emissive: mwCol, emissiveIntensity: 1.3 })))
+  pageGroup.add(new THREE.Mesh(new THREE.SphereGeometry(0.65, 8, 8), new THREE.MeshBasicMaterial({ color: mwCol, transparent: true, opacity: 0.09, depthWrite: false, blending: THREE.AdditiveBlending })))
+  pageGroup.add(new THREE.PointLight(0xffd480, 0.8, 12))
 
   hitMeshes = []   // reset on rebuild
   for (const c of CLUSTERS.filter(cl => cl.name !== 'Milky Way')) {
@@ -994,9 +994,9 @@ function buildClusters() {
 
     // Visible glow sphere
     const cm  = new THREE.Mesh(new THREE.SphereGeometry(r, 8, 8), new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: 0.9 }))
-    cm.position.copy(pos); scene.add(cm)
+    cm.position.copy(pos); pageGroup.add(cm)
     const cg  = new THREE.Mesh(new THREE.SphereGeometry(r * 4, 6, 6), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.05, depthWrite: false, blending: THREE.AdditiveBlending }))
-    cg.position.copy(pos); scene.add(cg)
+    cg.position.copy(pos); pageGroup.add(cg)
 
     // Invisible hit sphere — generous radius for comfortable clicking
     const hitR   = Math.max(0.30, r * 5)
@@ -1005,7 +1005,7 @@ function buildClusters() {
     const hitMesh = new THREE.Mesh(hitGeo, hitMat)
     hitMesh.position.copy(pos)
     hitMesh.userData.clusterName = c.name
-    scene.add(hitMesh)
+    pageGroup.add(hitMesh)
     hitMeshes.push(hitMesh)
   }
 
@@ -1015,7 +1015,7 @@ function buildClusters() {
     new THREE.MeshBasicMaterial({ visible: false }),
   )
   mwHit.userData.clusterName = 'milky-way'
-  scene.add(mwHit)
+  pageGroup.add(mwHit)
   hitMeshes.push(mwHit)
 }
 
@@ -1035,8 +1035,8 @@ function updateClusterLabels(nowMs: number) {
     if (c.name === 'Milky Way') continue   // omit — always at centre
 
     _projVec.copy(clusterScenePos(c))
-    const dist = camera.position.distanceTo(_projVec)
-    _projVec.project(camera)
+    const dist = camera!.position.distanceTo(_projVec)
+    _projVec.project(camera!)
 
     const sx = (_projVec.x + 1) / 2 * W
     const sy = (-_projVec.y + 1) / 2 * H
@@ -1079,30 +1079,30 @@ function buildDefenderData(): DefenderNavData {
     const pos = clusterScenePos(c)
     return { name: c.name, x: pos.x, z: pos.z, richness: c.richness, color: '#' + new THREE.Color(c.color).getHexString(), hasEvent: false }
   })
-  return { cosmicData: { cameraX: camera.position.x, cameraZ: camera.position.z, clusters, conduits: [] } }
+  return { cosmicData: { cameraX: camera?.position.x ?? 0, cameraZ: camera?.position.z ?? 0, clusters, conduits: [] } }
 }
 
 // ── Scene initialisation ──────────────────────────────────────────────────────
 
 function initScene() {
-  if (!canvas.value) return
+  renderer = viz.renderer
+  scene    = viz.scene
+  camera   = viz.camera
+  controls = viz.controls
+  if (!renderer || !scene || !camera || !controls) return
 
-  renderer = new THREE.WebGLRenderer({ canvas: canvas.value, antialias: true })
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
-  renderer.setSize(window.innerWidth, window.innerHeight)
-  renderer.toneMapping         = THREE.ACESFilmicToneMapping
-  renderer.toneMappingExposure  = 1.0
-
-  scene = new THREE.Scene()
+  // Shared scene-level settings
   scene.background = new THREE.Color(0x010208)
-  scene.fog        = new THREE.FogExp2(0x010208, 0.010)   // lighter fog — more of the web visible
+  scene.fog        = new THREE.FogExp2(0x010208, 0.010)
 
   // Meta view: pulled back, slightly elevated, wider FOV
-  camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.05, 500)
+  camera.fov    = 65
+  camera.near   = 0.05
+  camera.far    = 500
   camera.position.set(5, 3.5, 20)
   camera.lookAt(0, 0, 0)
+  camera.updateProjectionMatrix()
 
-  controls = new OrbitControls(camera, renderer.domElement)
   controls.enableDamping   = true
   controls.dampingFactor   = 0.07
   controls.autoRotate      = true
@@ -1111,7 +1111,7 @@ function initScene() {
   controls.maxDistance     = 280
   controls.enablePan       = false
 
-  scene.add(new THREE.AmbientLight(0x080c18, 0.7))
+  pageGroup.add(new THREE.AmbientLight(0x080c18, 0.7))
 
   buildBackground()
   buildVoids()
@@ -1121,120 +1121,110 @@ function initScene() {
   buildLaniakea()
   buildClusters()
 
-  startLoop()
+  scene.add(pageGroup)
+  stopTick = viz.addTick(onTick)
 
   // Cinematic pull-in — starts far out so the meta view scale is felt
-  gsap.from(camera.position, { z: 55, y: 10, duration: 7, ease: 'power2.out', onUpdate: () => controls.update() })
+  gsap.from(camera.position, { z: 55, y: 10, duration: 7, ease: 'power2.out', onUpdate: () => controls!.update() })
 }
 
-// ── Animation loop ────────────────────────────────────────────────────────────
+// ── Per-frame tick (registered with shared useVizRenderer loop) ───────────────
 
 let lastSnovaCheck = 0
 
-function startLoop() {
-  const tick = () => {
-    animId = requestAnimationFrame(tick)
-    const nowMs = performance.now()
-    const t     = nowMs / 1000
+function onTick(t: number) {
+  const nowMs = t * 1000
 
-    for (const u of voidUniforms) u.uTime.value = t
+  for (const u of voidUniforms) u.uTime.value = t
 
-    // Edge shimmer — primary slow pulse, glow fast shimmer
-    for (let ei = 0; ei < voidEdgeMats.length; ei++) {
-      const { mat, phase } = voidEdgeMats[ei]!
-      mat.opacity = 0.18 + 0.14 * Math.sin(t * 0.55 + phase)
-    }
-    for (let gi = 0; gi < voidGlowMats.length; gi++) {
-      const { mat, phase } = voidGlowMats[gi]!
-      mat.opacity = 0.06 + 0.10 * Math.sin(t * 1.10 + phase)
-    }
-
-    for (let i = 0; i < accretionDisks.length; i++) {
-      accretionDisks[i]!.rotation.y += 0.0045 + i * 0.0008
-    }
-
-    for (let i = 0; i < quasarJets.length; i++) {
-      ;(quasarJets[i]!.material as THREE.MeshBasicMaterial).opacity = 0.28 + Math.sin(t * 1.6 + i * 0.9) * 0.18
-    }
-
-    for (const sn of novaShells) {
-      sn.mesh.scale.setScalar(1 + Math.sin(t * 0.55 + sn.phase) * 0.025)
-    }
-
-    for (const orb of bhClusterOrbs) {
-      orb.angle += orb.speed * 0.016
-      orb.mesh.position.set(
-        BH_CLUSTER_POS.x + Math.cos(orb.angle) * orb.r,
-        BH_CLUSTER_POS.y,
-        BH_CLUSTER_POS.z + Math.sin(orb.angle) * orb.r,
-      )
-    }
-
-    // Supernova visibility check — throttled (500ms is enough since time scrubber drives it)
-    if (nowMs - lastSnovaCheck > 480) {
-      updateSnovaVisibility()
-      lastSnovaCheck = nowMs
-    }
-
-    updateClusterLabels(nowMs)
-    defenderNav.value?.redraw(buildDefenderData())
-
-    controls.update()
-    renderer.render(scene, camera)
+  for (let ei = 0; ei < voidEdgeMats.length; ei++) {
+    const { mat, phase } = voidEdgeMats[ei]!
+    mat.opacity = 0.18 + 0.14 * Math.sin(t * 0.55 + phase)
   }
-  tick()
+  for (let gi = 0; gi < voidGlowMats.length; gi++) {
+    const { mat, phase } = voidGlowMats[gi]!
+    mat.opacity = 0.06 + 0.10 * Math.sin(t * 1.10 + phase)
+  }
+
+  for (let i = 0; i < accretionDisks.length; i++) {
+    accretionDisks[i]!.rotation.y += 0.0045 + i * 0.0008
+  }
+
+  for (let i = 0; i < quasarJets.length; i++) {
+    ;(quasarJets[i]!.material as THREE.MeshBasicMaterial).opacity = 0.28 + Math.sin(t * 1.6 + i * 0.9) * 0.18
+  }
+
+  for (const sn of novaShells) {
+    sn.mesh.scale.setScalar(1 + Math.sin(t * 0.55 + sn.phase) * 0.025)
+  }
+
+  for (const orb of bhClusterOrbs) {
+    orb.angle += orb.speed * 0.016
+    orb.mesh.position.set(
+      BH_CLUSTER_POS.x + Math.cos(orb.angle) * orb.r,
+      BH_CLUSTER_POS.y,
+      BH_CLUSTER_POS.z + Math.sin(orb.angle) * orb.r,
+    )
+  }
+
+  if (nowMs - lastSnovaCheck > 480) {
+    updateSnovaVisibility()
+    lastSnovaCheck = nowMs
+  }
+
+  if (camera) updateClusterLabels(nowMs)
+  defenderNav.value?.redraw(buildDefenderData())
+  // controls.update() and renderer.render() are handled by useVizRenderer loop
 }
 
-// ── Resize / lifecycle ────────────────────────────────────────────────────────
-
-function onResize() {
-  if (!renderer || !camera) return
-  camera.aspect = window.innerWidth / window.innerHeight
-  camera.updateProjectionMatrix()
-  renderer.setSize(window.innerWidth, window.innerHeight)
-}
+// ── Lifecycle ─────────────────────────────────────────────────────────────────
 
 onMounted(async () => {
-  // ── Security: 48-hour session horizon ────────────────────────────────────────
   enforceSessionHorizon()
 
-  // ── Bandwidth gate: skip Three.js entirely on very slow connections ───────────
   const tier = detectBandwidthTier()
   if (tier === 'slow') {
     isSlowConnection.value = true
     lbwNote.value = 'Connection detected: slow-2g / 2g — heavy 3D rendering suppressed.'
-    await galaxyStore.loadData()  // still load data for nav/panel (text-only, ~380 KB JSON)
+    await galaxyStore.loadData()
     const pool = galaxyStore.planets.filter(p => p.st_teff && p.sy_dist && p.pl_eqt)
     mySettlement.value = pool.length ? pool[Math.floor(Math.random() * pool.length)]! : null
-    return   // ← do not initScene()
+    return
   }
 
   await galaxyStore.loadData()
   const pool = galaxyStore.planets.filter(p => p.st_teff && p.sy_dist && p.pl_eqt)
   mySettlement.value = pool.length ? pool[Math.floor(Math.random() * pool.length)]! : null
-  window.addEventListener('resize', onResize)
   initScene()
 })
 
 onUnmounted(() => {
-  cancelAnimationFrame(animId)
-  window.removeEventListener('resize', onResize)
-  renderer?.dispose()
-  controls?.dispose()
-  accretionDisks = []; quasarJets = []; novaShells = []; snovaGroups = []
-  voidUniforms = []; voidEdgeMats = []; voidGlowMats = []; bhClusterOrbs = []
-  for (const obj of laniakeaObjs) {
-    scene?.remove(obj)
+  stopTick?.()
+
+  // Restore shared controls to neutral state
+  if (controls) {
+    controls.autoRotate      = false
+    controls.autoRotateSpeed = 0
+    controls.enablePan       = true
+  }
+
+  // Dispose all geometries and materials inside the pageGroup
+  pageGroup.traverse((obj) => {
     if ((obj as THREE.Mesh).isMesh) {
       const m = obj as THREE.Mesh
       m.geometry?.dispose()
       if (Array.isArray(m.material)) m.material.forEach(x => x.dispose())
-      else (m.material as THREE.Material | undefined)?.dispose()
+      else (m.material as THREE.Material)?.dispose()
     } else if ((obj as THREE.Line).isLine) {
       (obj as THREE.Line).geometry?.dispose()
     }
-  }
-  laniakeaObjs = []
+  })
+  viz.scene?.remove(pageGroup)
+
+  // Reset module-level tracking arrays
+  accretionDisks = []; quasarJets = []; novaShells = []; snovaGroups = []
+  voidUniforms = []; voidEdgeMats = []; voidGlowMats = []; bhClusterOrbs = []
+  laniakeaObjs = []; hitMeshes = []
   laniakeaFlowMat?.dispose(); laniakeaFlowMat = undefined
 })
 </script>
