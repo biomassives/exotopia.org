@@ -239,6 +239,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: 'Sky Generation — Educational Lessons' },
       },
       {
+        path: 'void-math',
+        name: 'void-math',
+        component: () => import('src/pages/VoidMathPage.vue'),
+        meta: { title: 'Void Architecture — Conduit Mathematics' },
+      },
+      {
         path: 'pon-ink',
         name: 'pon-ink',
         component: () => import('src/pages/PonInkPage.vue'),

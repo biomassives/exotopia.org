@@ -206,6 +206,7 @@
               </tbody>
             </table>
             <router-link to="/sky-lessons" class="dp-link dp-link--btn">Open sky lessons →</router-link>
+            <router-link to="/void-math" class="dp-link dp-link--btn" style="margin-left:8px">Void &amp; conduit math →</router-link>
           </div>
         </section>
 
