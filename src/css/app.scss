@@ -58,26 +58,16 @@ body {
 // ── Visualization overlay pages ───────────────────────────────────────────────
 // Used by CosmicPage, GalaxyPage, SurfaceViewPage.
 // The shared Three.js canvas in MainLayout renders behind these transparent pages.
-// Interactive UI elements (panels, buttons) restore pointer-events locally.
+// The page itself is the click/drag/raycast surface (see @click="onClick" etc. in
+// each page) — it must stay pointer-events:auto, or clicks on "empty" scene regions
+// (anywhere a UI panel doesn't sit — most of the screen) fall through to
+// q-page-container and never reach the handler. Panels that need to swallow clicks
+// before they reach the scene (e.g. WelcomeOverlay) use @click.stop locally.
 .viz-overlay-page {
-  background:     transparent !important;
-  pointer-events: none;
-  position:       relative;
-  height:         calc(100vh - 44px);
-  overflow:       hidden;
-
-  // Restore pointer-events for all direct UI children
-  > * { pointer-events: auto; }
-
-  // Quasar components used inside panels also need events
-  .q-btn, .q-input, .q-select, .q-icon,
-  .ctx-panel, .side-panel, .space-overlay,
-  .propose-panel, .legend-anchor, .legend-block,
-  .cluster-nav-bar, .event-panel, .approach-hud,
-  .dm-overlay, .hover-box, .mw-entry-overlay,
-  .cluster-label, .subcluster-label,
-  .surface-panel, .moon-panel, .loc-panel,
-  .defender-nav { pointer-events: auto; }
+  background: transparent !important;
+  position:   relative;
+  height:     calc(100vh - 44px);
+  overflow:   hidden;
 }
 
 // ── Fade transition (used in overlays) ───────────────────────────────────────

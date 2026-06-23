@@ -16,10 +16,40 @@
       <span class="text-blue-grey-3 text-caption">{{ systemName }}</span>
     </div>
 
+    <!-- Generated Galaxy pop overlay -->
+    <Transition name="gen-overlay">
+      <div v-if="genOverlayOpen" class="cs-gen-overlay" @click.self="genOverlayOpen = false">
+        <div class="cs-gen-card">
+          <div class="cs-gen-card__header">
+            <span class="cs-gen-card__title">GENERATED GALAXY · CLUSTER MEMBER</span>
+            <button class="cs-gen-card__close" @click="genOverlayOpen = false">✕</button>
+          </div>
+          <p class="cs-gen-card__body">
+            This world is part of a <strong>computationally generated galaxy</strong> drawn from confirmed membership
+            of the <em>{{ clusterName }}</em> cluster. Galaxy positions and cluster membership come from real X-ray
+            survey catalog data (Takey 2013 / XMM-Newton). The individual star systems, planetary architectures, and
+            surface environments are generated from a deterministic seed derived from each galaxy's catalog ID —
+            they are not observationally confirmed, but they are stable and permanent.
+          </p>
+          <p class="cs-gen-card__body">
+            Settlement addresses on generated cluster worlds are as valid as any confirmed-exoplanet settlement.
+            Your exolocation NFT pins to the same coordinate in every session.
+          </p>
+          <div class="cs-gen-card__footer">
+            <span class="cs-gen-card__tag">{{ galaxyLabel }}</span>
+            <span class="cs-gen-card__tag">{{ clusterName }}</span>
+            <span class="cs-gen-card__tag">{{ spectral }}-type host</span>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
     <!-- Planet info panel -->
     <div class="cs-info-panel">
-      <div class="text-caption text-blue-grey-5" style="letter-spacing:0.1em;font-size:9px">
-        CLUSTER WORLD · SURFACE
+      <div class="text-caption text-blue-grey-5 row items-center no-wrap"
+           style="letter-spacing:0.1em;font-size:9px;gap:4px">
+        <span>GENERATED GALAXY · CLUSTER MEMBER</span>
+        <button class="cs-info-badge" @click="genOverlayOpen = true" title="What is a generated galaxy?">ⓘ</button>
       </div>
       <div class="text-subtitle2 text-blue-grey-2 q-mt-xs">{{ systemName }}</div>
       <div class="text-caption text-blue-grey-5 q-mb-sm">{{ planetLabel }}</div>
@@ -61,9 +91,13 @@
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import * as THREE from 'three'
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import gsap from 'gsap'
 import { surfacePaletteFor, disposeScene, type SurfacePalette } from 'src/lib/three-utils'
 import { useSettlements, clusterKey }               from 'src/lib/settlements'
+
+// ── UI state ───────────────────────────────────────────────────────────────────
+const genOverlayOpen = ref(false)
 
 // ── Route ──────────────────────────────────────────────────────────────────────
 const route  = useRoute()
@@ -159,6 +193,7 @@ const canvasEl = ref<HTMLCanvasElement>()
 let renderer:  THREE.WebGLRenderer | null = null
 let scene:     THREE.Scene | null = null
 let camera:    THREE.PerspectiveCamera | null = null
+let controls:  OrbitControls | null = null
 let rafId:     number | null = null
 
 function buildTerrain(pal: SurfacePalette, rng: () => number): THREE.Mesh {
@@ -341,12 +376,27 @@ function buildScene() {
   pyr.position.set(0.4, -0.5, -0.5)
   scene.add(pyr)
 
+  // Orbit controls — drag to rotate, pinch/scroll to zoom, right-drag to pan
+  controls = new OrbitControls(camera, canvasEl.value)
+  controls.target.set(0, 0.5, 0)
+  controls.enableDamping  = true
+  controls.dampingFactor  = 0.08
+  controls.minDistance    = 0.8
+  controls.maxDistance    = 16
+  controls.minPolarAngle  = 0.05
+  controls.maxPolarAngle  = Math.PI * 0.60
+  controls.rotateSpeed    = 0.5
+  controls.mouseButtons   = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN }
+  controls.touches        = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN }
+  controls.update()
+
   window.addEventListener('resize', onResize)
   tick()
 }
 
 function tick() {
   rafId = requestAnimationFrame(tick)
+  controls?.update()
   if (scene && camera && renderer) renderer.render(scene, camera)
 }
 
@@ -360,6 +410,7 @@ function onResize() {
 function teardown() {
   if (rafId !== null) cancelAnimationFrame(rafId)
   window.removeEventListener('resize', onResize)
+  controls?.dispose(); controls = null
   if (scene) disposeScene(scene)
   renderer?.dispose()
   renderer = null; scene = null; camera = null
@@ -376,11 +427,11 @@ function goMoon() {
 
 onMounted(() => {
   buildScene()
-  if (camera) {
+  if (camera && controls) {
     gsap.to(camera.position, {
       x: 0, y: 1.6, z: 3.0,
       duration: 1.2, ease: 'power3.out',
-      onUpdate: () => { camera?.lookAt(0, 0.5, 0) },
+      onUpdate: () => { controls?.update() },
     })
   }
 })
@@ -411,5 +462,106 @@ onBeforeUnmount(teardown)
   position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
   background: rgba(2,4,10,0.70); padding: 4px 12px; border-radius: 20px;
   backdrop-filter: blur(4px); white-space: nowrap;
+}
+
+/* ─ Generated galaxy info badge ──────────────────────────────────────────────── */
+
+.cs-info-badge {
+  background: none;
+  border: none;
+  color: rgba(0, 180, 220, 0.55);
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 1;
+  padding: 0;
+  transition: color 0.15s ease;
+  flex-shrink: 0;
+}
+.cs-info-badge:hover { color: rgba(0, 220, 255, 0.95); }
+
+/* ─ Generated galaxy pop overlay ────────────────────────────────────────────── */
+
+.cs-gen-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 2, 14, 0.55);
+  backdrop-filter: blur(6px);
+}
+
+.cs-gen-card {
+  background: rgba(2, 6, 22, 0.96);
+  border: 1px solid rgba(0, 100, 160, 0.30);
+  border-radius: 10px;
+  padding: 20px 22px;
+  max-width: 420px;
+  width: calc(100% - 40px);
+  font-family: 'Courier New', monospace;
+}
+
+.cs-gen-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.cs-gen-card__title {
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
+  color: rgba(0, 200, 255, 0.85);
+  line-height: 1.4;
+}
+
+.cs-gen-card__close {
+  background: none;
+  border: none;
+  color: rgba(100, 150, 190, 0.55);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  flex-shrink: 0;
+  padding: 0;
+  transition: color 0.15s ease;
+}
+.cs-gen-card__close:hover { color: rgba(220, 90, 90, 0.90); }
+
+.cs-gen-card__body {
+  font-size: 11px;
+  line-height: 1.7;
+  color: rgba(140, 180, 215, 0.80);
+  margin: 0 0 10px;
+}
+.cs-gen-card__body strong { color: rgba(0, 210, 255, 0.90); font-weight: normal; }
+.cs-gen-card__body em     { color: rgba(180, 220, 255, 0.80); font-style: normal; }
+
+.cs-gen-card__footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 14px;
+}
+
+.cs-gen-card__tag {
+  font-size: 9px;
+  letter-spacing: 0.09em;
+  color: rgba(80, 160, 200, 0.65);
+  background: rgba(0, 60, 100, 0.25);
+  border: 1px solid rgba(0, 100, 160, 0.20);
+  border-radius: 3px;
+  padding: 2px 8px;
+}
+
+.gen-overlay-enter-active,
+.gen-overlay-leave-active {
+  transition: opacity 0.20s ease;
+}
+.gen-overlay-enter-from,
+.gen-overlay-leave-to {
+  opacity: 0;
 }
 </style>

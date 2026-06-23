@@ -42,6 +42,27 @@
         title="Return to previous view"
       >◄ PREV</button>
 
+      <span class="dn-sep">│</span>
+
+      <!-- Meta view tabs — show current strip, or zoom-out context views -->
+      <div class="dn-meta-tabs">
+        <button
+          :class="['dn-mtab', { 'dn-mtab--active': metaTab === 0 }]"
+          @click="metaTab = 0"
+          title="Current scene strip view"
+        >STRIP</button>
+        <button
+          :class="['dn-mtab', { 'dn-mtab--active': metaTab === 1 }]"
+          @click="metaTab = 1"
+          :title="meta1Label"
+        >+1</button>
+        <button
+          :class="['dn-mtab', { 'dn-mtab--active': metaTab === 2 }]"
+          @click="metaTab = 2"
+          :title="meta2Label"
+        >+2</button>
+      </div>
+
       <button class="dn-collapse-btn" @click="collapsed = !collapsed">
         {{ collapsed ? '▲' : '▼' }}
       </button>
@@ -123,6 +144,21 @@ const emit = defineEmits<{
 const viewMode          = ref<ViewMode>('natural')
 const cosmicTimeMyr     = ref(0)           // 0 = now, negative = Myr ago
 const eventFinderActive = ref(false)
+
+// ── Meta view tabs ────────────────────────────────────────────────────────────
+// 0 = current scene strip (default), 1 = one level up, 2 = two levels up
+const metaTab = ref<0 | 1 | 2>(0)
+
+const meta1Label = computed(() => {
+  if (props.mode === 'surface') return 'Star system — top-down orrery'
+  if (props.mode === 'system')  return 'Galactic position context'
+  return 'Cluster distribution overview'
+})
+const meta2Label = computed(() => {
+  if (props.mode === 'surface') return 'Galactic context — Sol to system'
+  if (props.mode === 'system')  return 'Cosmic cluster map'
+  return 'Void-scale large structure'
+})
 
 const cosmicTimeLabel = computed(() => {
   if (cosmicTimeMyr.value === 0) return 'NOW'
@@ -930,6 +966,10 @@ function redraw(data: DefenderNavData): void {
   ctx.save()
   ctx.scale(DPR, DPR)
 
+  // ── Meta view tabs take priority over strip ───────────────────────────────
+  if (metaTab.value === 1) { drawMetaOrrery(ctx, data); ctx.restore(); return }
+  if (metaTab.value === 2) { drawMetaGalaxy(ctx, data); ctx.restore(); return }
+
   if (props.mode === 'system' && data.systemData) {
     drawSystem(ctx, data.systemData)
   } else if (props.mode === 'surface' && data.surfaceData) {
@@ -979,6 +1019,178 @@ function redraw(data: DefenderNavData): void {
   }
 
   ctx.restore()
+}
+
+// ── Meta tab: +1 — top-down star system orrery ────────────────────────────────
+// Full-canvas 2D overhead view of orbits + planets. Used when metaTab === 1.
+
+function drawMetaOrrery(ctx: CanvasRenderingContext2D, data: DefenderNavData) {
+  drawBackground(ctx)
+
+  ctx.fillStyle = 'rgba(0, 180, 220, 0.55)'
+  ctx.font = '5.5px "Courier New", monospace'
+  ctx.letterSpacing = '0.10em'
+  ctx.textAlign = 'center'
+  ctx.fillText(meta1Label.value.toUpperCase(), W / 2, 9)
+  ctx.letterSpacing = '0'
+
+  const cx = W / 2, cy = H / 2
+
+  if (data.systemData) {
+    const { starTeff, planets, cameraAngle, cameraRadius } = data.systemData
+    const maxOrbit = planets.reduce((m, p) => Math.max(m, p.radius), 1)
+    const maxR     = Math.min(W, H) * 0.42
+    const scale    = maxR / (maxOrbit || 1)
+
+    // Orbit rings
+    for (const p of planets) {
+      const r = Math.min(p.radius * scale, maxR)
+      ctx.strokeStyle = p.isCurrent ? 'rgba(0,220,255,0.28)' : 'rgba(60,100,140,0.18)'
+      ctx.lineWidth   = p.isCurrent ? 0.9 : 0.5
+      ctx.setLineDash(p.isCurrent ? [] : [2, 4])
+      ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke()
+      ctx.setLineDash([])
+    }
+
+    // Star glow
+    const sc = teffToHex(starTeff)
+    const sg = ctx.createRadialGradient(cx, cy, 0, cx, cy, 11)
+    sg.addColorStop(0, sc + 'aa'); sg.addColorStop(1, sc + '00')
+    ctx.globalCompositeOperation = 'screen'
+    ctx.fillStyle = sg; ctx.beginPath(); ctx.arc(cx, cy, 11, 0, Math.PI * 2); ctx.fill()
+    ctx.globalCompositeOperation = 'source-over'
+    ctx.fillStyle = sc; ctx.beginPath(); ctx.arc(cx, cy, 3.5, 0, Math.PI * 2); ctx.fill()
+
+    // Planets
+    for (const p of planets) {
+      const r   = Math.min(p.radius * scale, maxR)
+      const ang = ((p.angle - 90) * Math.PI) / 180
+      const px  = cx + Math.cos(ang) * r
+      const py  = cy + Math.sin(ang) * r
+      const col = p.eqt
+        ? p.eqt > 800 ? '#ff6644' : p.eqt > 200 ? '#44ddaa' : '#8899ff'
+        : '#aabbcc'
+      ctx.fillStyle = p.isCurrent ? '#00e5ff' : col
+      const pr = p.isCurrent ? 3.8 : 2.2
+      ctx.beginPath(); ctx.arc(px, py, pr, 0, Math.PI * 2); ctx.fill()
+      if (p.isCurrent) {
+        ctx.strokeStyle = 'rgba(0,220,255,0.55)'; ctx.lineWidth = 0.9
+        ctx.beginPath(); ctx.arc(px, py, 7, 0, Math.PI * 2); ctx.stroke()
+        ctx.fillStyle = 'rgba(0,200,240,0.60)'
+        ctx.font = '5px "Courier New", monospace'
+        ctx.textAlign = 'left'
+        ctx.fillText(p.name, px + 6, py + 2)
+      }
+    }
+
+    // Camera position dot
+    const camAng = ((cameraAngle - 90) * Math.PI) / 180
+    const camR   = Math.min(cameraRadius * scale, maxR * 0.9)
+    const camX   = cx + Math.cos(camAng) * camR
+    const camY   = cy + Math.sin(camAng) * camR
+    ctx.fillStyle = 'rgba(255,255,200,0.70)'
+    ctx.beginPath(); ctx.arc(camX, camY, 2, 0, Math.PI * 2); ctx.fill()
+
+  } else if (data.currentSystemRef) {
+    ctx.fillStyle = 'rgba(80,130,170,0.55)'
+    ctx.font = '8px "Courier New", monospace'
+    ctx.textAlign = 'center'
+    ctx.fillText(data.currentSystemRef.hostname, cx, cy + 3)
+    ctx.font = '6px "Courier New", monospace'
+    ctx.fillStyle = 'rgba(60,100,140,0.45)'
+    ctx.fillText('system data loading…', cx, cy + 13)
+  }
+}
+
+// ── Meta tab: +2 — galactic position context ──────────────────────────────────
+// Full-canvas dot map: Sol at centre, current system direction & log-distance.
+// In cosmic mode: cluster scatter-plot instead.
+
+function drawMetaGalaxy(ctx: CanvasRenderingContext2D, data: DefenderNavData) {
+  drawBackground(ctx)
+
+  ctx.fillStyle = 'rgba(0, 180, 220, 0.55)'
+  ctx.font = '5.5px "Courier New", monospace'
+  ctx.letterSpacing = '0.10em'
+  ctx.textAlign = 'center'
+  ctx.fillText(meta2Label.value.toUpperCase(), W / 2, 9)
+  ctx.letterSpacing = '0'
+
+  const cx = W / 2, cy = H / 2
+
+  // Galactic disc — faint ellipse gradient
+  ctx.save()
+  ctx.translate(cx, cy)
+  ctx.scale(1, 0.28)
+  const gal = ctx.createRadialGradient(0, 0, 0, 0, 0, Math.min(W, H) * 0.44)
+  gal.addColorStop(0,   'rgba(180,160,255,0.16)')
+  gal.addColorStop(0.5, 'rgba(80,100,200,0.07)')
+  gal.addColorStop(1,   'rgba(0,0,0,0)')
+  ctx.fillStyle = gal; ctx.beginPath(); ctx.arc(0, 0, Math.min(W, H) * 0.44, 0, Math.PI * 2); ctx.fill()
+  ctx.restore()
+
+  if (data.currentSystemRef) {
+    const ref    = data.currentSystemRef
+    const raRad  = (ref.ra  * Math.PI) / 180
+    const decRad = (ref.dec * Math.PI) / 180
+    const dx     = Math.cos(decRad) * Math.cos(raRad)
+    const dy     = Math.cos(decRad) * Math.sin(raRad)
+    const norm   = Math.sqrt(dx * dx + dy * dy) || 1
+    const maxR   = Math.min(W, H) * 0.40
+    const logR   = Math.log10(Math.max(1, ref.distPc)) / Math.log10(8000) * maxR
+    const sysX   = cx + (dx / norm) * logR
+    const sysY   = cy - (dy / norm) * logR  // screen Y inverted vs astronomical dec
+
+    // Sol dot
+    ctx.fillStyle = '#ffd480'
+    ctx.beginPath(); ctx.arc(cx, cy, 2.5, 0, Math.PI * 2); ctx.fill()
+    ctx.fillStyle = 'rgba(255,212,128,0.55)'
+    ctx.font = '6px "Courier New", monospace'; ctx.textAlign = 'left'
+    ctx.fillText('Sol', cx + 4, cy + 2)
+
+    // Connection line
+    ctx.strokeStyle = 'rgba(0,180,220,0.38)'; ctx.lineWidth = 0.7
+    ctx.setLineDash([3, 4])
+    ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(sysX, sysY); ctx.stroke()
+    ctx.setLineDash([])
+
+    // System dot
+    const sg2 = ctx.createRadialGradient(sysX, sysY, 0, sysX, sysY, 7)
+    sg2.addColorStop(0, 'rgba(0,200,255,0.48)'); sg2.addColorStop(1, 'rgba(0,200,255,0)')
+    ctx.globalCompositeOperation = 'screen'
+    ctx.fillStyle = sg2; ctx.beginPath(); ctx.arc(sysX, sysY, 7, 0, Math.PI * 2); ctx.fill()
+    ctx.globalCompositeOperation = 'source-over'
+    ctx.fillStyle = '#00e5ff'; ctx.beginPath(); ctx.arc(sysX, sysY, 2.2, 0, Math.PI * 2); ctx.fill()
+
+    // Label
+    const midX = (cx + sysX) / 2, midY = (cy + sysY) / 2
+    const distStr = ref.distPc >= 1000 ? `${(ref.distPc / 1000).toFixed(1)}kpc` : `${Math.round(ref.distPc)}pc`
+    ctx.fillStyle = 'rgba(0,200,240,0.60)'; ctx.font = '5.5px "Courier New", monospace'; ctx.textAlign = 'center'
+    ctx.fillText(ref.hostname, midX, midY - 3)
+    ctx.fillStyle = 'rgba(0,180,200,0.45)'
+    ctx.fillText(distStr, midX, midY + 5)
+
+  } else if (data.cosmicData) {
+    // Cosmic mode: cluster scatter
+    const { clusters } = data.cosmicData
+    const scale = Math.min(W, H) / 60
+    for (const c of clusters) {
+      const px = cx + c.x * scale
+      const py = cy + c.z * scale
+      if (px < 2 || px > W - 2 || py < 2 || py > H - 2) continue
+      ctx.globalAlpha = 0.4 + c.richness * 0.06
+      ctx.fillStyle = c.color
+      ctx.beginPath(); ctx.arc(px, py, 1.2 + c.richness * 0.25, 0, Math.PI * 2); ctx.fill()
+    }
+    ctx.globalAlpha = 1
+    // Camera position cross
+    const { cameraX, cameraZ } = data.cosmicData
+    const kx = cx + cameraX * scale, ky = cy + cameraZ * scale
+    ctx.strokeStyle = 'rgba(255,255,200,0.60)'; ctx.lineWidth = 0.8
+    const cs = 4
+    ctx.beginPath(); ctx.moveTo(kx - cs, ky); ctx.lineTo(kx + cs, ky); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(kx, ky - cs); ctx.lineTo(kx, ky + cs); ctx.stroke()
+  }
 }
 
 // ── Earth↔System context inset ────────────────────────────────────────────────
@@ -1419,6 +1631,41 @@ onUnmounted(() => {
   color: #00e5ff;
   border-color: rgba(0, 229, 255, 0.48);
   background: rgba(0, 229, 255, 0.06);
+}
+
+/* ── Meta view tab strip ──────────────────────────────────────────── */
+
+.dn-meta-tabs {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.dn-mtab {
+  background: none;
+  border: 1px solid rgba(0, 140, 180, 0.18);
+  color: rgba(0, 160, 200, 0.45);
+  font-family: 'Courier New', monospace;
+  font-size: 6.5px;
+  letter-spacing: 0.08em;
+  padding: 1px 5px;
+  cursor: pointer;
+  border-radius: 2px;
+  line-height: 1.4;
+  transition: all 0.12s;
+  flex-shrink: 0;
+}
+
+.dn-mtab:hover {
+  color: #00e5ff;
+  border-color: rgba(0, 229, 255, 0.40);
+  background: rgba(0, 229, 255, 0.05);
+}
+
+.dn-mtab--active {
+  color: #00e5ff;
+  border-color: rgba(0, 229, 255, 0.55);
+  background: rgba(0, 180, 255, 0.10);
 }
 
 .dn-canvas {

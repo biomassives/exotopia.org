@@ -1,3 +1,23 @@
+/**
+ * Spatial URL API — query-param conventions shared across all viz pages
+ * ──────────────────────────────────────────────────────────────────────
+ *   ?at=<scope>              — named camera preset (see src/lib/spatial-scopes.ts)
+ *   ?cam=x,y,z,tx,ty,tz,fov — exact camera override (1 dp, comma-separated)
+ *
+ * Scope hierarchy  (colon-delimited, most specific wins):
+ *   cosmos                        L1 cosmic web entry
+ *   surface | surface:orbit | surface:zenith | surface:horizon
+ *   settlement:dome[:interior|:exterior|:centre]
+ *   settlement:library | :courtyard | :water[:surface] | :garden[:ground]
+ *   settlement:gateway | :stones[:altar] | :pyramid[:chamber]
+ *   settlement:orb:<slug>    slug = fana-ka | ot-kulcha | uni-kibaoni-shg
+ *                                   glipish-dj | am-lunchmeat
+ *
+ * Examples:
+ *   /surface/kepler-452/kepler-452b?at=settlement:pyramid:chamber
+ *   /surface/kepler-452/kepler-452b?at=settlement:orb:fana-ka
+ *   /surface/kepler-452/kepler-452b?cam=0,-6,-115,0,-4,-125,40
+ */
 import type { RouteRecordRaw } from 'vue-router'
 
 const routes: RouteRecordRaw[] = [
@@ -6,26 +26,35 @@ const routes: RouteRecordRaw[] = [
     component: () => import('src/layouts/MainLayout.vue'),
     children: [
       {
+        // Root = CosmicPage — the single unified cosmic visualization entry point.
+        // CosmosPage (formerly WelcomePage) is no longer the root to avoid having
+        // two separate 3D scenes that cause jarring transitions when clicking through.
         path: '',
-        redirect: '/welcome',
+        name: 'cosmic',
+        component: () => import('src/pages/CosmicPage.vue'),
+        meta: { title: 'Exotopia — Navigable Universe' },
       },
       {
+        // Backward-compat: /welcome and /cosmic both redirect to root
         path: 'welcome',
-        name: 'welcome',
-        component: () => import('src/pages/WelcomePage.vue'),
-        meta: { title: 'Welcome' },
+        redirect: '/',
       },
       {
         path: 'cosmic',
-        name: 'cosmic',
-        component: () => import('src/pages/CosmicPage.vue'),
-        meta: { title: 'Cosmic View' },
+        redirect: '/',
+      },
+      {
+        // CosmosPage kept accessible for dev comparison; not linked from UI
+        path: 'cosmos-entry',
+        name: 'cosmos-entry',
+        component: () => import('src/pages/CosmosPage.vue'),
+        meta: { title: 'Cosmos Entry (dev)' },
       },
       {
         path: 'galaxy',
         name: 'galaxy',
         component: () => import('src/pages/GalaxyPage.vue'),
-        meta: { title: 'Galaxy View' },
+        meta: { title: 'Milky Way · Star Systems' },
       },
       {
         path: 'clusters',
@@ -49,6 +78,14 @@ const routes: RouteRecordRaw[] = [
         props: true,
       },
       {
+        // Dome interior: first-person view inside the settlement dome with item management
+        path: 'surface/:hostname/:planetName/interior',
+        name: 'dome-interior',
+        component: () => import('src/pages/DomeInteriorPage.vue'),
+        meta: { title: 'Settlement Interior' },
+        props: true,
+      },
+      {
         // Cluster interior: navigate member galaxies within a named cluster
         path: 'cluster-interior/:slug',
         name: 'cluster-interior',
@@ -62,6 +99,14 @@ const routes: RouteRecordRaw[] = [
         name: 'void-interior',
         component: () => import('src/pages/VoidInteriorPage.vue'),
         meta: { title: 'Void Interior' },
+        props: true,
+      },
+      {
+        // Void galaxy interior: star systems within a void galaxy (click from VoidInteriorPage)
+        path: 'void-galaxy/:voidId/:gid',
+        name: 'void-galaxy',
+        component: () => import('src/pages/VoidGalaxyPage.vue'),
+        meta: { title: 'Void Galaxy' },
         props: true,
       },
       {
@@ -186,6 +231,12 @@ const routes: RouteRecordRaw[] = [
         name: 'docs',
         component: () => import('src/pages/DocPage0.vue'),
         meta: { title: 'Docs' },
+      },
+      {
+        path: 'sky-lessons',
+        name: 'sky-lessons',
+        component: () => import('src/pages/SkyLessonsPage.vue'),
+        meta: { title: 'Sky Generation — Educational Lessons' },
       },
       {
         path: 'pon-ink',

@@ -213,7 +213,7 @@
           <q-icon name="mdi-earth" color="green-6" size="14px" class="q-mr-sm flex-shrink-0" />
           <span>
             Can't find your planet? Any confirmed NASA archive entry works.
-            You can also use the galaxy view to explore systems and return here.
+            You can also use the Milky Way map to explore systems and return here.
           </span>
         </div>
 
@@ -408,7 +408,7 @@
             {{ form.stationName }} is established at {{ form.planetName }}.
           </div>
           <div class="row q-gutter-sm q-mt-md justify-center">
-            <q-btn unelevated color="cyan-8" icon="scatter_plot" label="View in Galaxy"
+            <q-btn unelevated color="cyan-8" icon="scatter_plot" label="Milky Way Map"
               @click="$router.push('/galaxy')" />
             <q-btn outline color="blue-grey-5" label="Build another"
               @click="resetWizard" />

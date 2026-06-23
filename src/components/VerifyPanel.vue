@@ -137,7 +137,7 @@
           <div v-if="activeTab === 'system'">
             <template v-if="!verifyStore.currentHostname || !currentSys">
               <div class="vp-loading">
-                Open a star system in the Galaxy view to inspect rendering details.
+                Open a star system in the Milky Way map to inspect rendering details.
               </div>
             </template>
             <template v-else>

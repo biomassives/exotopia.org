@@ -271,7 +271,7 @@
           <router-link to="/galaxy" class="ob-ready-card">
             <span class="ob-ready-icon">🌌</span>
             <div class="ob-ready-title">Find a planet</div>
-            <div class="ob-ready-desc">Browse 5,000+ confirmed worlds in the galaxy view</div>
+            <div class="ob-ready-desc">Browse 5,000+ confirmed worlds in the Milky Way map</div>
           </router-link>
           <router-link :to="mintRoute" class="ob-ready-card ob-ready-card--primary">
             <span class="ob-ready-icon">⬡</span>

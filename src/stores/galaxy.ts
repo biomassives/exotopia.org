@@ -13,9 +13,11 @@ export interface Planet {
   pl_orbper?:   number | null   // orbital period (days)
   pl_eqt?:      number | null   // equilibrium temperature (K)
   pl_rade?:     number | null   // radius (Earth radii)
-  pl_bmasse?:   number | null   // best mass estimate (Earth masses)
+  pl_bmasse?:   number | null   // best mass estimate (Earth masses) — pscomppars composite
+  pl_orbeccen?: number | null   // orbital eccentricity
   pl_insol?:    number | null   // insolation flux (S⊕)
   st_teff?:     number | null   // host star effective temperature (K)
+  st_rad?:      number | null   // host star radius (Solar radii)
   st_spectype?: string | null   // host star spectral type
   sy_mnum?:     number | null   // number of moons in system
   sy_pnum?:     number | null   // number of planets in system
@@ -42,6 +44,7 @@ export interface StarSystem {
   dec:          number
   sy_dist:      number | null
   st_teff?:     number | null
+  st_rad?:      number | null   // host star radius (Solar radii)
   st_spectype?: string | null
   sy_pnum?:     number | null
   sy_mnum:      number          // default 0 if not in data
@@ -86,6 +89,7 @@ export const useGalaxyStore = defineStore('galaxy', () => {
             dec:          p.dec,
             sy_dist:      p.sy_dist,
             st_teff:      p.st_teff,
+            st_rad:       p.st_rad,
             st_spectype:  p.st_spectype,
             sy_pnum:      p.sy_pnum,
             sy_mnum:      p.sy_mnum ?? 0,

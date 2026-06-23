@@ -11,11 +11,12 @@
  */
 
 export type EventType =
-  | 'live-event'    // hybrid physical + virtual streamed event
-  | 'workshop'      // educational / vocational session
-  | 'gallery'       // visual art exhibition
-  | 'sound-session' // DJ / production session via pon.ink
-  | 'settlement'    // permanent virtual property marker
+  | 'live-event'       // hybrid physical + virtual streamed event
+  | 'workshop'         // educational / vocational session
+  | 'gallery'          // visual art exhibition
+  | 'sound-session'    // DJ / production session via pon.ink
+  | 'settlement'       // permanent virtual property marker
+  | 'science-outreach' // international education / research collaboration session
 
 export interface CosmicEvent {
   id:           string
@@ -102,6 +103,38 @@ export const COSMIC_EVENTS: CosmicEvent[] = [
     ponInkUrl:    'https://pon.ink/scd-hub',
     maxGuests:    1000,
   },
+
+  // ── Science & education outreach ───────────────────────────────────────────
+  // These sessions use the cosmic map as a shared teaching/research surface —
+  // the goal is to connect classroom and citizen-science audiences directly
+  // to the same procedurally-generated + real-catalog data the platform runs on.
+  {
+    id:           'sci-outreach-001',
+    clusterName:  'J004039.2+253106',
+    title:        'Open Cosmic Web Session — Galaxy Cluster Tour',
+    community:    'International Astronomy Education Network',
+    type:         'science-outreach',
+    description:  'A guided live tour of the cosmic web visualization for classrooms and astronomy clubs worldwide — the great voids, Laniakea flow lines, and a galaxy-cluster zoom-in showing the LOD reveal from cluster sprite down to individual member galaxies and their generated star systems. Recordings are archived for asynchronous use across time zones.',
+    eventTimeUtc: '2026-06-24T16:00:00Z',
+    durationMin:  60,
+    ponInkUrl:    'https://pon.ink/events/sci-outreach-001',
+    hostName:     'SCD Hub Education Team',
+    maxGuests:    300,
+  },
+  {
+    id:           'sci-outreach-002',
+    clusterName:  'J004324.2-094449',
+    title:        'Citizen Data Verification Sprint — Cluster Member Catalog Review',
+    community:    'Citizen Science Network',
+    type:         'science-outreach',
+    description:  'Volunteers use the Cluster Interior zoom-in reveal to compare procedurally generated galaxy members against real RC3 / VCC / FCC catalog entries. Galaxies flagged as missing real data — surfaced in-app via the "[LOD] DATA REQUEST" notes — are queued for the next data-pipeline enrichment pass. Open to students, amateur astronomers, and research partners; a participation badge is issued via pon.ink.',
+    eventTimeUtc: '2026-07-08T15:00:00Z',
+    durationMin:  90,
+    ponInkUrl:    'https://pon.ink/events/sci-outreach-002',
+    airdropId:    'verify-sprint-001',
+    hostName:     'SCD Hub Data Team',
+    maxGuests:    150,
+  },
 ]
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -131,17 +164,19 @@ export function msUntilEvent(iso: string): number {
 }
 
 export const EVENT_TYPE_LABEL: Record<EventType, string> = {
-  'live-event':    'LIVE EVENT',
-  'workshop':      'WORKSHOP',
-  'gallery':       'GALLERY',
-  'sound-session': 'SOUND SESSION',
-  'settlement':    'SETTLEMENT',
+  'live-event':       'LIVE EVENT',
+  'workshop':         'WORKSHOP',
+  'gallery':          'GALLERY',
+  'sound-session':    'SOUND SESSION',
+  'settlement':       'SETTLEMENT',
+  'science-outreach': 'SCIENCE OUTREACH',
 }
 
 export const EVENT_TYPE_COLOR: Record<EventType, string> = {
-  'live-event':    '#ff6644',
-  'workshop':      '#44ccaa',
-  'gallery':       '#cc88ff',
-  'sound-session': '#ffcc44',
-  'settlement':    '#ffd480',
+  'live-event':       '#ff6644',
+  'workshop':         '#44ccaa',
+  'gallery':          '#cc88ff',
+  'sound-session':    '#ffcc44',
+  'settlement':       '#ffd480',
+  'science-outreach': '#5599ff',
 }

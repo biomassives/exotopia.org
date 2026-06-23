@@ -85,17 +85,16 @@ const ROUTE_COLORS: Record<string, RGB> = {
   cosmic:     [26,  55, 120],   // deep space blue
   galaxy:     [200,136, 42],    // Milky Way amber
   surface:    [70, 180, 160],   // temperate teal
-  welcome:    [50, 130, 160],   // settlement
+  cosmos:     [50, 130, 160],   // cosmos entry
   gallery:    [120, 68, 185],   // gallery violet
   station:    [90, 155, 200],   // station blue
   default:    [45, 100, 160],   // neutral space
 }
 
 function routeToRgb(r: string): RGB {
-  if (r.startsWith('/cosmic'))  return ROUTE_COLORS.cosmic!
+  if (r === '/' || r.startsWith('/cosmic')) return ROUTE_COLORS.cosmic!
   if (r.startsWith('/galaxy'))  return ROUTE_COLORS.galaxy!
   if (r.startsWith('/surface')) return ROUTE_COLORS.surface!
-  if (r.startsWith('/welcome')) return ROUTE_COLORS.welcome!
   if (r.startsWith('/gallery')) return ROUTE_COLORS.gallery!
   if (r.startsWith('/station')) return ROUTE_COLORS.station!
   return ROUTE_COLORS.default!

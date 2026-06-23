@@ -32,7 +32,12 @@
     <Transition name="slide-panel">
       <div v-if="selected" class="ci-panel">
         <div class="ci-panel-header">
-          <div class="text-caption text-cyan-7 q-mb-xs" style="letter-spacing:0.1em">MEMBER GALAXY</div>
+          <div>
+            <div class="text-caption text-cyan-7 q-mb-xs" style="letter-spacing:0.1em">MEMBER GALAXY</div>
+            <div class="ci-zoom-badge" :class="`ci-zoom-badge--${zoomLevel}`">
+              {{ zoomLevel === 'systems' ? '⬡ SYSTEMS VIEW' : zoomLevel === 'galaxy' ? '◈ GALAXY VIEW' : '◎ OVERVIEW' }}
+            </div>
+          </div>
           <q-btn flat dense size="xs" icon="mdi-close" color="blue-grey-5" @click="deselect" />
         </div>
 
@@ -73,8 +78,16 @@
           {{ selected.notes }}
         </div>
 
+        <div v-if="zoomLevel === 'systems'" class="ci-lod-cloud">
+          <q-icon name="mdi-star-four-points-small" size="9px" />
+          <span>{{ systemCloudCount }} systems visible</span>
+        </div>
+
         <q-separator color="blue-grey-8" class="q-my-sm" />
 
+        <q-btn v-if="zoomLevel !== 'systems'" dense rounded unelevated size="sm" color="blue-grey-8" class="full-width q-mb-xs"
+          icon="mdi-magnify-plus" label="Zoom In — Reveal Systems"
+          @click="flyToSystemView()" />
         <q-btn dense rounded unelevated size="sm" color="cyan-8" class="full-width q-mb-xs"
           icon="mdi-telescope" label="Explore Star Systems"
           @click="navigateToGalaxy(false)" />
@@ -170,6 +183,12 @@ const hoverName   = ref<string>('')
 const hoverPos    = ref({ x: 0, y: 0 })
 const memberCount = ref(0)
 const systemDataMap = ref(new Map<string, SystemDataEntry>())
+
+// ── LOD / zoom reveal state ───────────────────────────────────────────────────
+type ZoomLevel = 'overview' | 'galaxy' | 'systems'
+const zoomLevel        = ref<ZoomLevel>('overview')
+const systemCloudCount = ref(0)
+let   systemCloudMesh: THREE.Points | null = null
 
 const selectedRealData = computed(() =>
   selected.value ? systemDataMap.value.get(selected.value.id) ?? null : null
@@ -499,6 +518,7 @@ function startLoop() {
   const tick = () => {
     animId = requestAnimationFrame(tick)
     controls.update()
+    updateZoomLevel()
     // Slowly rotate data-badge rings so they feel alive
     const t = performance.now() / 1000
     for (const ring of dataRings) {
@@ -573,21 +593,135 @@ async function navigateToGalaxy(settle = false) {
   void router.push(base + query)
 }
 
+// ── LOD cloud management ──────────────────────────────────────────────────────
+function hashGalId(id: string): number {
+  let h = 0x811c9dc5 >>> 0
+  for (let i = 0; i < id.length; i++) { h ^= id.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0 }
+  return h
+}
+
+function makeRng(seed: number): () => number {
+  let s = (seed | 1) >>> 0
+  return () => {
+    s ^= s << 13; s ^= s >>> 17; s ^= s << 5
+    return (s >>> 0) / 0xFFFFFFFF
+  }
+}
+
+function clearSystemCloud() {
+  if (!systemCloudMesh) return
+  scene.remove(systemCloudMesh)
+  systemCloudMesh.geometry.dispose()
+  ;(systemCloudMesh.material as THREE.PointsMaterial).dispose()
+  systemCloudMesh = null
+  systemCloudCount.value = 0
+}
+
+function spawnSystemCloud(member: ClusterMember, pos: THREE.Vector3) {
+  clearSystemCloud()
+  const realData  = systemDataMap.value.get(member.id)
+  const nEst      = realData?.systems ?? member.system_architecture?.estimated_planets
+  const n         = Math.min(nEst ?? 10, 35)
+  const radius    = (member.lod3_params?.scene_su ?? 0.3) * 1.1
+  const rng       = makeRng(hashGalId(member.id))
+
+  const positions = new Float32Array(n * 3)
+  const colors    = new Float32Array(n * 3)
+
+  // Approximate stellar population spectrum colors (O→M)
+  const palette = [
+    [0.61, 0.69, 1.00],  // O/B blue-white
+    [0.79, 0.87, 1.00],  // A  white-blue
+    [1.00, 0.96, 0.93],  // F  warm white
+    [1.00, 0.89, 0.71],  // G  yellow-white (sun-like)
+    [1.00, 0.70, 0.40],  // K  orange
+    [1.00, 0.50, 0.25],  // M  deep orange
+  ]
+  const weights = [0.02, 0.08, 0.18, 0.30, 0.26, 0.16]
+
+  for (let i = 0; i < n; i++) {
+    const r  = radius * (0.15 + rng() * 0.85)
+    const th = rng() * Math.PI * 2
+    const ph = Math.acos(2 * rng() - 1)
+    positions[i*3]   = pos.x + r * Math.sin(ph) * Math.cos(th)
+    positions[i*3+1] = pos.y + r * Math.sin(ph) * Math.sin(th) * 0.45  // flatten to disc-ish
+    positions[i*3+2] = pos.z + r * Math.cos(ph)
+
+    let pick = rng(); let ci = 0
+    for (let w = 0; w < weights.length; w++) { pick -= weights[w]; if (pick <= 0) { ci = w; break } }
+    ci = Math.min(ci, palette.length - 1)
+    colors[i*3] = palette[ci][0]; colors[i*3+1] = palette[ci][1]; colors[i*3+2] = palette[ci][2]
+  }
+
+  const geo = new THREE.BufferGeometry()
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3))
+  geo.setAttribute('color',    new THREE.BufferAttribute(colors, 3))
+  const mat = new THREE.PointsMaterial({ size: 0.045, sizeAttenuation: true, vertexColors: true, transparent: true, opacity: 0 })
+  systemCloudMesh = new THREE.Points(geo, mat)
+  scene.add(systemCloudMesh)
+  gsap.to(mat, { opacity: 0.80, duration: 1.4, ease: 'power2.out' })
+  systemCloudCount.value = n
+
+  // Log data availability for developers / data pipeline
+  const clName = clusterData.value?.cluster ?? slug.value
+  if (realData) {
+    console.info(`[LOD] ${clName} — ${member.name || member.id}: ${realData.systems} real systems, ${realData.planets} planets from generated pipeline.`)
+  } else {
+    console.info(`[LOD] ${clName} — ${member.name || member.id}: no pipeline entry — rendering ${n} deterministic systems from seed. DATA REQUEST: need star-system JSON entry for galaxy_id="${member.id}" in cluster "${clName}".`)
+  }
+  if (!member.system_architecture) {
+    console.info(`[LOD] ${clName} — ${member.name || member.id}: system_architecture missing. DATA REQUEST: want metallicity_fe_h, estimated_planets, planet_bias, icm_stress for this member.`)
+  }
+}
+
+function updateZoomLevel() {
+  const mem = selected.value
+  if (!mem) {
+    if (zoomLevel.value !== 'overview') { zoomLevel.value = 'overview'; clearSystemCloud() }
+    return
+  }
+  const dist = camera.position.distanceTo(controls.target)
+  const next: ZoomLevel = dist < 1.8 ? 'systems' : dist < 6.0 ? 'galaxy' : 'overview'
+  if (next === zoomLevel.value) return
+  zoomLevel.value = next
+  if (next === 'systems' && !systemCloudMesh) {
+    const proxy = hitProxies.find(p => (p.userData.member as ClusterMember).id === mem.id)
+    if (proxy) spawnSystemCloud(mem, proxy.position)
+  }
+  if (next === 'overview') clearSystemCloud()
+}
+
 function flyToMember(pos: THREE.Vector3) {
   gsap.killTweensOf(camera.position)
   gsap.killTweensOf(controls.target)
 
   const fromCam = camera.position.clone().sub(pos).normalize()
-  const dist    = Math.max(2.0, camera.position.distanceTo(pos) * 0.35)
-  const dest    = pos.clone().addScaledVector(fromCam, dist)
+  const dest    = pos.clone().addScaledVector(fromCam, 2.8)  // land 2.8 su from galaxy
 
+  gsap.to(controls.target, { x: pos.x, y: pos.y, z: pos.z, duration: 0.7, ease: 'power2.out', onUpdate: () => controls.update() })
+  gsap.to(camera.position, { x: dest.x, y: dest.y, z: dest.z, duration: 2.0, ease: 'power3.out', onUpdate: () => controls.update() })
+}
+
+function flyToSystemView() {
+  const mem = selected.value
+  if (!mem) return
+  const proxy = hitProxies.find(p => (p.userData.member as ClusterMember).id === mem.id)
+  if (!proxy) return
+  const pos     = proxy.position
+  const fromCam = camera.position.clone().sub(pos).normalize()
+  const dest    = pos.clone().addScaledVector(fromCam, 0.75)
+
+  gsap.killTweensOf(camera.position)
+  gsap.killTweensOf(controls.target)
   gsap.to(controls.target, { x: pos.x, y: pos.y, z: pos.z, duration: 0.5, ease: 'power2.out', onUpdate: () => controls.update() })
-  gsap.to(camera.position, { x: dest.x, y: dest.y, z: dest.z, duration: 1.4, ease: 'power3.out', onUpdate: () => controls.update() })
+  gsap.to(camera.position, { x: dest.x, y: dest.y, z: dest.z, duration: 2.6, ease: 'power4.out', onUpdate: () => controls.update() })
 }
 
 function deselect() {
   if (!selected.value) return
   selected.value = null
+  clearSystemCloud()
+  zoomLevel.value = 'overview'
   void router.replace({ query: {} })
   gsap.killTweensOf(camera.position)
   gsap.killTweensOf(controls.target)
@@ -613,6 +747,7 @@ onUnmounted(() => {
   cancelAnimationFrame(animId)
   window.removeEventListener('resize', onResize)
   renderer?.domElement.removeEventListener('wheel', onWheel)
+  clearSystemCloud()
   _texCache.forEach(t => t.dispose())
   _texCache.clear()
   renderer?.dispose()
@@ -668,6 +803,20 @@ onUnmounted(() => {
   font-size: 9px; letter-spacing: 0.08em;
   color: rgba(0,210,190,0.80);
   margin: 3px 0 2px;
+}
+
+.ci-zoom-badge {
+  font-size: 8px; letter-spacing: 0.10em; padding: 1px 5px;
+  border-radius: 3px; display: inline-block; margin-bottom: 4px;
+}
+.ci-zoom-badge--overview { color: rgba(100,160,200,0.65); }
+.ci-zoom-badge--galaxy   { color: rgba(80,230,200,0.85); }
+.ci-zoom-badge--systems  { color: rgba(180,240,120,0.90); }
+
+.ci-lod-cloud {
+  display: flex; align-items: center; gap: 4px;
+  font-size: 9px; color: rgba(180,240,120,0.80);
+  letter-spacing: 0.05em; margin: 3px 0;
 }
 
 .ci-tooltip {

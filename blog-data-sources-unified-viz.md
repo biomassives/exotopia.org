@@ -218,5 +218,66 @@ That is the cartography problem. The map has one grid. The catalog sources are t
 
 ---
 
-*Working draft — SCD Hub / Exotopia.org · GPL v3*
-*Data sources referenced: Takey2013 XMM-Newton catalog (NASA/HEASARC); NASA Exoplanet Archive composite planetary systems table; HYG Stellar Database v3; Gaia DR3 (ESA); ATNF Pulsar Catalog (Parkes); Habitable Exoplanet Catalog (UPR Arecibo); Event Horizon Telescope collaboration; GWTC-3 (LIGO/Virgo/KAGRA); SDSS DR17 void catalogs; NEXUS+ cosmic web filament reconstruction; VCC Virgo Cluster Catalog; Kreckel et al. 2012 void galaxy survey; PHOENIX/BT-Settl stellar atmosphere library; Kipping et al. exomoon candidates.*
+## Progress update — June 2026
+
+*The section above was drafted during early planning for the unified visualisation branch. This addendum records what has since shipped and recalibrates what comes next.*
+
+### What is live
+
+**The parallax sky is real.** The single most important item from the original "what is thin" list at Level 4 has been implemented. `SurfaceViewPage` now computes every exoplanet host star's actual 3D galactic position in parsec space using `ra`, `dec`, and `sy_dist` from the NASA Exoplanet Archive, then calculates the apparent sky direction of every other host star as seen from the settlement's position. The result is that every settlement sees a genuinely different sky. Land on a planet in the Cygnus arm and the Sun is a faint unremarkable star roughly in the direction of Sagittarius. Land on a planet in the Kepler field — a dense rectangular patch of confirmed hosts — and the 3,000 candidates that produce a visual "waffle" from Earth's perspective dissolve into a naturally scattered sky once the parallax transform removes the observer-frame distortion. This is the new constellations capability. It is running now.
+
+The NASA Exoplanet Archive pull that was listed as priority #1 in the earlier draft — adding `sy_dist`, `st_teff`, and `st_rad` to every record — is also complete. The current `exoapril2_2024.json` carries all three fields for the full 35,896-record dataset. That data drives both the parallax sky computation and the host star colour system.
+
+**Host star spectral colour is wired.** `starColorFromTeff()` converts the measured effective temperature of each host star into a physically derived RGB colour (O-type blue-violet through M-type deep red-orange), which is applied to the host star disc in the surface scene and colours catalog star points in the sky field. An M-dwarf settlement and an A-type settlement look different before you see the landscape.
+
+**The exomoon settlement architecture is specced and coded.** `moon-settlement.ts` implements a six-level trophic hierarchy — Stellar Zone → Planetary Surface/Orbit → Moon Orbit → Moon Surface → Moon–Planet Lagrange → Moon–Planet Interface — each with a named coordinate system identifier, stability classification, access difficulty, and notes on the relevant physics. The Lagrange level distinguishes stable trojan points (L4/L5) from unstable gateway points (L1/L2). The Roche limit and Hill sphere radii are cited as first-class physical parameters defining the L6 liminal zone. The data model for "on the surface of an exomoon with the planet filling a large fraction of the sky" is ready. The Three.js scene for that viewpoint is the next thing to build.
+
+**The Void Oracle loader is live.** `void-oracle.ts` implements fetch-on-demand loading for per-void galaxy population files at `public/void-galaxies/{id}-viz.json`, with in-memory cache and deduplicated concurrent request handling — the same pattern as the galaxy oracle. The Boötes Void file stubs are present. The NED TAP pipeline that will populate them with the 2,836 real NED-sourced galaxies is the active work item.
+
+**Named spatial presets and URL-driven camera navigation are shipped.** `spatial-scopes.ts` defines camera positions for every level of the descent, from `cosmos` (L1 cosmic web) through `surface:zenith` and `surface:horizon` (L5 settlement surface look-modes) through `settlement:pyramid:chamber` (E8 wormhole interior). The `useSpatialLocation` composable wires these presets to URL query parameters with GSAP fly-to transitions, so every view in the descent chain is linkable and shareable.
+
+### The new constellations: what we mean and why it matters
+
+When we say "new constellations," we mean this specifically: a settlement on an exoplanet 1,200 light-years from Earth does not see Orion. It does not see the Big Dipper. The stars that make up those patterns are, from 1,200 light-years away, scattered across the sky in entirely different directions. The patterns that a settlement community would learn — the shapes they would name, the directions they would navigate by — are defined by the local stellar neighbourhood, which is different for every exoplanet.
+
+This is not an aesthetic flourish. It is a necessary consequence of parallax. For stars within a few hundred light-years of a settlement, the angular offset from the Earth-viewpoint position is large enough to produce wholesale rearrangement of the sky. For distant stars (more than ~2,000 light-years away) the shift is sub-degree and the sky background looks similar to Earth's. The transition between "local sky" and "shared background" is the geometric boundary at which a community starts to develop its own astronomical culture — its own names for the bright nearby stars, its own navigation landmarks, its own mythology written in a sky no one on Earth has ever seen.
+
+The parallax computation currently running in `SurfaceViewPage` produces this correctly. Each settlement already generates a unique sky. What does not yet exist is the *cultural* layer on top of it: a system that identifies the brightest stars visible from a given settlement, clusters them into candidate constellation patterns, and surfaces those patterns as named objects in the settlement's information architecture. That system — a settlement-local star chart with community-nameable patterns — is the next frontier in the new constellations work.
+
+### What changes in the priority order
+
+The original "incorporate first" list placed the NASA Archive re-pull, GWTC-3 gravitational wave maps, and ATNF pulsars as the top three. The archive re-pull is done. The order for the rest has shifted:
+
+**1. Exomoon surface scene** — the settlement type that most dramatically demonstrates the new-constellations capability is the exomoon. A settlement on an exomoon has the parent planet — a gas giant, or a rocky super-Earth — visible as a large disc in the sky, cycling through phases. The horizon is physically different: lower surface gravity, different atmospheric depth. The star field has the parallax offset of the exoplanet system's position, not Earth's. And the two confirmed exomoon candidates (Kepler-1625b-i and Kepler-1708b-i) have published orbital parameters that can drive a physically grounded scene. This is the settlement type that does not exist anywhere else in public space visualisation.
+
+**2. Settlement-local star chart and constellation naming** — a lightweight tool that takes the star field already being rendered in `SurfaceViewPage`, identifies the 20–30 brightest visible stars from the settlement's parallax-shifted catalog, and allows the settlement community to name groups of them. This does not require new data — the parallax sky is already computed. It requires a UI layer, a data persistence hook, and a rendering overlay for named constellation lines. The output would be community-owned: each settlement's constellations would live in the settlement's DAO record, not in a central catalog.
+
+**3. Boötes Void galaxy population** — fill `public/void-galaxies/bootes-viz.json` with the 2,836 NED-sourced galaxies from the TAP pipeline. This upgrades the void interior from a generated sparse scene to a real observational dataset. Void galaxies are visually distinctive: unusually blue, disc-dominated, star-forming. The contrast with the cluster interior view (red ellipticals, dense hot X-ray gas) would be immediately visible and scientifically accurate.
+
+**4. GWTC-3 gravitational wave sky maps** — still a high-impact, low-friction addition. The five most precisely localised LIGO events as translucent sky annuli in CosmicPage. The original rationale stands.
+
+**5. ATNF Pulsar Catalog** — pulsars as galactic navigation beacons in GalaxyPage. Connects to the Voyager Golden Record positioning tradition; opens the pulsar orbital-zone settlement type.
+
+### Updated summary table
+
+| Level | Object type | Current status | Next action |
+|---|---|---|---|
+| L1 | X-ray clusters | 345 live, colour-coded by temperature | NED member catalogs for top 100 |
+| L1 | Cosmic voids | Approximate spheres, Boötes oracle live but empty | Fill Boötes from NED TAP pipeline |
+| L1 | GW events | Not yet rendered | GWTC-3 annuli in CosmicPage |
+| L2 | Cluster galaxies | 26,225 oracle-generated; 14 named bright members exact | VCC for Virgo; SDSS for northern clusters |
+| L2 | Black holes | Metadata only, not enterable | EHT scene for M87* and Sgr A* |
+| L3 | Milky Way stars | HYG v3, 119,614 stars | Gaia DR3 for `d < 500 pc` |
+| L3 | Confirmed planets | 35,896 records, `sy_dist`/`st_teff`/`st_rad` populated | Exomoon candidates (Teachey/Kipping) |
+| L3 | Pulsars | Not yet | ATNF catalog (~800 distance-constrained) |
+| L4 | Planet surfaces | Parallax sky live; host star colour wired | Constellation naming UI |
+| L4 | Exomoon surface | Architecture specced; scene not yet built | Build scene with planet-in-sky |
+| L4 | Orbital zones | Schema defined; no scene | Station scene for OZ coordinate type |
+| L5 | Void interiors | Sparse generated scene; oracle loader live | Real void galaxy population |
+| L5 | Void-wall sheets | Not represented | NEXUS+ filament data second wave |
+
+---
+
+*SCD Hub / Exotopia.org · GPL v3*
+*Initial draft data sources: Takey2013 XMM-Newton catalog (NASA/HEASARC); NASA Exoplanet Archive composite planetary systems table; HYG Stellar Database v3; Gaia DR3 (ESA); ATNF Pulsar Catalog (Parkes); Habitable Exoplanet Catalog (UPR Arecibo); Event Horizon Telescope collaboration; GWTC-3 (LIGO/Virgo/KAGRA); SDSS DR17 void catalogs; NEXUS+ cosmic web filament reconstruction; VCC Virgo Cluster Catalog; Kreckel et al. 2012 void galaxy survey; PHOENIX/BT-Settl stellar atmosphere library; Kipping et al. exomoon candidates.*
+*June 2026 update: NASA Exoplanet Archive composite planetary systems table (`sy_dist`, `st_teff`, `st_rad` columns populated); parallax sky pipeline implementation in `SurfaceViewPage`; `moon-settlement.ts` trophic hierarchy; `void-oracle.ts` loader.*

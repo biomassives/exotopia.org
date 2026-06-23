@@ -1,5 +1,5 @@
 <template>
-  <q-page class="bg-black" style="height:100vh;overflow:hidden" @click="onCanvasClick">
+  <q-page class="bg-black" style="height:100vh;overflow:hidden" @click="onCanvasClick" @dblclick="onCanvasDblClick">
 
     <!-- ── Slow-connection fallback — skip Three.js entirely on 2G ────── -->
     <div v-if="isSlowConnection" class="low-bw-fallback">
@@ -8,7 +8,7 @@
       <div class="lbw-sub">Cosmic visualization loading is paused on this connection.<br>
         Select a view below or wait for a stronger signal.</div>
       <div class="lbw-btns">
-        <q-btn unelevated color="cyan-9" icon="scatter_plot" label="Galaxy Map" @click="$router.push('/galaxy')" />
+        <q-btn unelevated color="cyan-9" icon="scatter_plot" label="Milky Way" @click="$router.push('/galaxy')" />
         <q-btn outline color="blue-grey-5" icon="mdi-web" label="Cosmic" @click="$router.push('/cosmic')" class="q-ml-sm" />
       </div>
       <div class="lbw-note">{{ lbwNote }}</div>
@@ -52,7 +52,7 @@
 
     <!-- ── Quick-nav (below header) ────────────────────────────────────── -->
     <div class="top-nav">
-      <q-btn flat dense size="xs" color="blue-grey-5" icon="scatter_plot"        label="Galaxy"  @click="$router.push('/galaxy')" />
+      <q-btn flat dense size="xs" color="blue-grey-5" icon="scatter_plot"        label="Milky Way"  @click="$router.push('/galaxy')" />
       <q-btn flat dense size="xs" color="blue-grey-5" icon="mdi-web"             label="Cosmic"  @click="$router.push('/cosmic')" />
       <q-btn flat dense size="xs" color="cyan-7"      icon="mdi-hexagon-outline" label="Transit" @click="transitOpen = true" />
     </div>
@@ -175,12 +175,15 @@
       @eventFinderOpen="() => {}"
     />
 
+    <!-- ── Welcome overlay — role-aware entry panel ───────────────────── -->
+    <WelcomeOverlay ref="welcomeOverlay" />
+
   </q-page>
 </template>
 
 <script setup lang="ts">
 /**
- * WelcomePage.vue — Large meta cosmic view
+ * CosmosPage.vue — Unified cosmic entry point
  *
  * Void peripheries: IcosahedronGeometry polygon edges + Fresnel sphere membrane
  * Galaxy clusters:  elegantly labelled (projected DOM overlay)
@@ -198,6 +201,7 @@ import { usePortalStore } from 'src/stores/portal'
 import type { Planet }   from 'src/stores/galaxy'
 import { enforceSessionHorizon, detectBandwidthTier } from 'src/lib/security'
 import DefenderNav       from 'src/components/DefenderNav.vue'
+import WelcomeOverlay    from 'src/components/WelcomeOverlay.vue'
 import type {
   DefenderNavData, CosmicStripEntry,
   DefenderTarget,
@@ -207,6 +211,7 @@ import {
   clusterScenePos, voidScenePos, voidSceneRadius,
   superclusters as lookupSupercluster,
 } from 'src/data/cosmic-structures'
+import { VOID_VERT, VOID_FRAG } from 'src/lib/void-shader'
 
 // ── Stores / router ───────────────────────────────────────────────────────────
 
@@ -216,8 +221,9 @@ const portalStore = usePortalStore()
 
 // ── Three.js shared renderer ──────────────────────────────────────────────────
 
-const viz         = useVizRenderer()
-const defenderNav = ref<InstanceType<typeof DefenderNav> | null>(null)
+const viz             = useVizRenderer()
+const defenderNav     = ref<InstanceType<typeof DefenderNav> | null>(null)
+const welcomeOverlay  = ref<InstanceType<typeof WelcomeOverlay> | null>(null)
 
 // ── Bandwidth detection ───────────────────────────────────────────────────────
 // On slow-2g / 2g connections the Three.js cosmic scene is skipped entirely.
@@ -379,10 +385,13 @@ function goToCluster(name: string) {
 }
 
 function onCanvasClick(e: MouseEvent) {
+  // A click on the 3D scene dismisses the welcome overlay
+  welcomeOverlay.value?.dismiss()
+
   if (panelOpen.value) { panelOpen.value = false; return }
   if (!camera) return
 
-  // Raycast the welcome-page scene for cluster sphere hits
+  // Raycast the cosmos scene for cluster sphere hits
   const ndcX =  (e.clientX / window.innerWidth)  * 2 - 1
   const ndcY = -(e.clientY / window.innerHeight) * 2 + 1
   raycaster.setFromCamera({ x: ndcX, y: ndcY }, camera)
@@ -398,74 +407,28 @@ function onDefenderFlyTo(target: DefenderTarget) {
   if (target.type === 'cluster') router.push('/cosmic')
 }
 
-// ── GLSL — void iridescent shimmer membrane ───────────────────────────────────
+// Double-click: navigate into hovered cluster, or zoom camera toward cursor.
+function onCanvasDblClick(e: MouseEvent) {
+  if (!camera) return
+  const ndcX =  (e.clientX / window.innerWidth)  * 2 - 1
+  const ndcY = -(e.clientY / window.innerHeight) * 2 + 1
+  raycaster.setFromCamera({ x: ndcX, y: ndcY }, camera)
 
-const VOID_VERT = /* glsl */`
-  varying vec3 vNormal;
-  varying vec3 vViewDir;
-  varying vec3 vObjPos;
-  void main() {
-    vNormal   = normalize(normalMatrix * normal);
-    vObjPos   = position;
-    vec4 mv   = modelViewMatrix * vec4(position, 1.0);
-    vViewDir  = normalize(-mv.xyz);
-    gl_Position = projectionMatrix * mv;
+  const hits = raycaster.intersectObjects(hitMeshes, false)
+  if (hits.length) {
+    const name = hits[0].object.userData.clusterName as string | undefined
+    if (name) { goToCluster(name); return }
   }
-`
 
-const VOID_FRAG = /* glsl */`
-  uniform float uTime;
-  uniform vec3  uColor;    /* primary hue */
-  uniform vec3  uColor2;   /* complementary hue */
-  varying vec3  vNormal;
-  varying vec3  vViewDir;
-  varying vec3  vObjPos;
+  // No specific cluster hit — zoom camera 30% forward toward cursor direction
+  const forward = new THREE.Vector3(ndcX * 0.5, ndcY * 0.5, 0.5)
+    .unproject(camera).sub(camera.position).normalize()
+  const step = camera.position.length() * 0.30
+  const newPos = camera.position.clone().add(forward.multiplyScalar(step))
+  gsap.to(camera.position, { x: newPos.x, y: newPos.y, z: newPos.z, duration: 1.3, ease: 'power2.out' })
+}
 
-  void main() {
-    /* Fresnel rim — sharper inner / softer outer */
-    float cosA = abs(dot(vNormal, vViewDir));
-    float rim  = pow(1.0 - cosA, 1.7);
-    float rimS = pow(1.0 - cosA, 4.2);   /* sharp inner sparkle rim */
-
-    /* Slow-flowing colour bands across the surface */
-    float band1 = sin(vObjPos.x * 2.1 + vObjPos.y * 1.6 + uTime * 0.32) * 0.5 + 0.5;
-    float band2 = sin(vObjPos.y * 2.4 + vObjPos.z * 1.8 - uTime * 0.26) * 0.5 + 0.5;
-    float cmix  = band1 * band2;
-
-    /* Iridescence — hue shifts with viewing angle */
-    float iri   = pow(rim, 0.6) * 0.38;
-
-    /* High-freq sparkle points */
-    float sp = sin(vObjPos.x * 24.0 + uTime * 3.3)
-             * sin(vObjPos.z * 19.0 + uTime * 2.7) * 0.5 + 0.5;
-    sp = pow(sp, 4.5) * 0.6;
-
-    /* Mid-freq shimmer modulation */
-    float shim = sin(vObjPos.x * 8.4 + uTime * 0.9)
-               * sin(vObjPos.z * 7.1 + uTime * 1.2) * 0.16 + 0.84;
-
-    /* Tertiary rolling shimmer */
-    float roll = sin(vObjPos.y * 5.5 + vObjPos.x * 3.3 + uTime * 0.55) * 0.10 + 0.90;
-
-    /* Colour blend */
-    vec3 col = mix(uColor, uColor2, clamp(cmix + iri, 0.0, 1.0));
-
-    /* White-hot inner rim boost */
-    col = mix(col, col * 1.55 + 0.28, rimS * 0.45);
-
-    /* Additive sparkle flare */
-    col += vec3(sp * rim * 0.9);
-
-    /* Saturate warmth: slight push toward luminous whites on peak */
-    col = clamp(col, 0.0, 1.2);
-
-    float alpha = rim * shim * roll * 0.72
-                + rimS * 0.22
-                + sp * rim * 0.38;
-
-    gl_FragColor = vec4(col, clamp(alpha, 0.0, 0.94));
-  }
-`
+// VOID_VERT / VOID_FRAG imported from src/lib/void-shader.ts
 
 // ── Black hole catalog ────────────────────────────────────────────────────────
 
@@ -541,7 +504,7 @@ const activeSnCount = computed(() => {
 
 // ── Three.js module-level state ───────────────────────────────────────────────
 
-// pageGroup holds all WelcomePage scene objects — added to / removed from shared scene
+// pageGroup holds all CosmosPage scene objects — added to / removed from shared scene
 const pageGroup = new THREE.Group()
 let   stopTick: (() => void) | null = null
 
@@ -558,7 +521,19 @@ let accretionDisks: THREE.Mesh[]   = []
 let quasarJets:     THREE.Mesh[]   = []
 let novaShells:     { mesh: THREE.Mesh; phase: number }[] = []
 let snovaGroups:    SNovaGroup[]   = []
-let voidUniforms:   { uTime: { value: number }; uColor: { value: THREE.Color }; uColor2: { value: THREE.Color } }[] = []
+type VoidUniforms = {
+  uTime:       { value: number }
+  uColor:      { value: THREE.Color }
+  uColor2:     { value: THREE.Color }
+  uPointer:    { value: THREE.Vector2 }
+  uPointerStr: { value: number }
+}
+let voidUniforms: VoidUniforms[] = []
+
+// ── Void pointer / interaction tracking ──────────────────────────────────────
+const _voidPointerNDC  = new THREE.Vector2(0, 0)
+let   _voidPointerStr  = 0      // current smoothed interaction strength
+let   _voidLastMove    = 0      // timestamp of last pointer move (ms)
 let voidEdgeMats:   { mat: THREE.LineBasicMaterial; phase: number }[] = []
 let voidGlowMats:   { mat: THREE.LineBasicMaterial; phase: number }[] = []
 let laniakeaObjs:   THREE.Object3D[] = []
@@ -637,13 +612,13 @@ function buildVoids() {
 
     // ── Translucent polygon faces (two passes, primary + complement) ──────────
     const faceA = new THREE.Mesh(polyGeo, new THREE.MeshBasicMaterial({
-      color: colA, transparent: true, opacity: 0.032,
+      color: colA, transparent: true, opacity: 0.016,
       side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending,
     }))
     faceA.position.copy(pos); pageGroup.add(faceA)
 
     const faceB = new THREE.Mesh(polyGeo, new THREE.MeshBasicMaterial({
-      color: colB, transparent: true, opacity: 0.018,
+      color: colB, transparent: true, opacity: 0.010,
       side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending,
     }))
     faceB.position.copy(pos); pageGroup.add(faceB)
@@ -653,7 +628,7 @@ function buildVoids() {
     const phase   = rng() * Math.PI * 2
 
     const edgeMat = new THREE.LineBasicMaterial({
-      color: edgeColA, transparent: true, opacity: 0.28,
+      color: edgeColA, transparent: true, opacity: 0.06,
     })
     const edgeMesh = new THREE.LineSegments(edgeGeo, edgeMat)
     edgeMesh.position.copy(pos)
@@ -662,7 +637,7 @@ function buildVoids() {
 
     // ── Secondary glow edge — additive complement colour ─────────────────────
     const glowMat = new THREE.LineBasicMaterial({
-      color: edgeColB, transparent: true, opacity: 0.12,
+      color: edgeColB, transparent: true, opacity: 0.03,
       blending: THREE.AdditiveBlending,
     })
     const glowMesh = new THREE.LineSegments(edgeGeo, glowMat)
@@ -670,12 +645,14 @@ function buildVoids() {
     pageGroup.add(glowMesh)
     voidGlowMats.push({ mat: glowMat, phase: phase + Math.PI * 0.55 })
 
-    // ── Iridescent Fresnel membrane sphere (all voids r ≥ 0.6) ───────────────
+    // ── HSW meniscus membrane sphere (all voids r ≥ 0.6) ────────────────────
     if (r >= 0.6) {
-      const uniforms = {
-        uTime:   { value: 0 },
-        uColor:  { value: colA },
-        uColor2: { value: colB },
+      const uniforms: VoidUniforms = {
+        uTime:       { value: 0 },
+        uColor:      { value: colA },
+        uColor2:     { value: colB },
+        uPointer:    { value: new THREE.Vector2(0, 0) },
+        uPointerStr: { value: 0 },
       }
       voidUniforms.push(uniforms)
 
@@ -698,7 +675,7 @@ function buildVoids() {
       const innerFill = new THREE.Mesh(
         new THREE.SphereGeometry(r * 0.96, 16, 12),
         new THREE.MeshBasicMaterial({
-          color: 0x000106, transparent: true, opacity: 0.18,
+          color: 0x000106, transparent: true, opacity: 0.10,
           side: THREE.BackSide, depthWrite: false,
         }),
       )
@@ -1133,17 +1110,27 @@ function initScene() {
 let lastSnovaCheck = 0
 
 function onTick(t: number) {
-  const nowMs = t * 1000
+  const nowMs  = t * 1000
+  const nowWall = performance.now()
 
-  for (const u of voidUniforms) u.uTime.value = t
+  // Smooth pointer strength: ramp to 1 on activity, decay to 0 after 2.2 s idle
+  const TARGET_STR = (nowWall - _voidLastMove < 2200) ? 1.0 : 0.0
+  _voidPointerStr += (TARGET_STR - _voidPointerStr) * 0.06
+  if (_voidPointerStr < 0.002) _voidPointerStr = 0
+
+  for (const u of voidUniforms) {
+    u.uTime.value = t
+    u.uPointer.value.copy(_voidPointerNDC)
+    u.uPointerStr.value = _voidPointerStr
+  }
 
   for (let ei = 0; ei < voidEdgeMats.length; ei++) {
     const { mat, phase } = voidEdgeMats[ei]!
-    mat.opacity = 0.18 + 0.14 * Math.sin(t * 0.55 + phase)
+    mat.opacity = 0.05 + 0.02 * Math.sin(t * 0.18 + phase)
   }
   for (let gi = 0; gi < voidGlowMats.length; gi++) {
     const { mat, phase } = voidGlowMats[gi]!
-    mat.opacity = 0.06 + 0.10 * Math.sin(t * 1.10 + phase)
+    mat.opacity = 0.02 + 0.01 * Math.sin(t * 0.22 + phase)
   }
 
   for (let i = 0; i < accretionDisks.length; i++) {
@@ -1177,6 +1164,23 @@ function onTick(t: number) {
   // controls.update() and renderer.render() are handled by useVizRenderer loop
 }
 
+// ── Void pointer event handlers ───────────────────────────────────────────────
+
+function _onVoidPointerMove(clientX: number, clientY: number) {
+  const el = viz.renderer?.domElement
+  if (!el) return
+  const rect = el.getBoundingClientRect()
+  _voidPointerNDC.x =  ((clientX - rect.left)  / rect.width)  * 2 - 1
+  _voidPointerNDC.y = -((clientY - rect.top)   / rect.height) * 2 + 1
+  _voidLastMove = performance.now()
+}
+
+function onVoidMouseMove(e: MouseEvent) { _onVoidPointerMove(e.clientX, e.clientY) }
+function onVoidTouchMove(e: TouchEvent) {
+  const t = e.touches[0]
+  if (t) _onVoidPointerMove(t.clientX, t.clientY)
+}
+
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
 
 onMounted(async () => {
@@ -1196,6 +1200,8 @@ onMounted(async () => {
   const pool = galaxyStore.planets.filter(p => p.st_teff && p.sy_dist && p.pl_eqt)
   mySettlement.value = pool.length ? pool[Math.floor(Math.random() * pool.length)]! : null
   initScene()
+  window.addEventListener('mousemove',  onVoidMouseMove, { passive: true })
+  window.addEventListener('touchmove',  onVoidTouchMove, { passive: true })
 })
 
 onUnmounted(() => {
@@ -1226,6 +1232,8 @@ onUnmounted(() => {
   voidUniforms = []; voidEdgeMats = []; voidGlowMats = []; bhClusterOrbs = []
   laniakeaObjs = []; hitMeshes = []
   laniakeaFlowMat?.dispose(); laniakeaFlowMat = undefined
+  window.removeEventListener('mousemove', onVoidMouseMove)
+  window.removeEventListener('touchmove', onVoidTouchMove)
 })
 </script>
 

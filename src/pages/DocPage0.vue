@@ -130,6 +130,83 @@
             <p class="dp-p">The surface view shows the exoplanet from ground level. The dome settlement contains a stone circle (8 standing stones, deterministic from hostname seed, triple Archimedean spiral pattern), the mule-bot, soul orbs representing community zones, and a sky showing the real stellar neighbourhood in that direction.</p>
             <p class="dp-p">X-RAY mode applies a thermal palette (sepia + hue-rotate) simulating radiometric imaging. DK.MAT (dark matter) mode reveals the E8 pyramid — the wormhole conduit entry point for long-distance transit.</p>
           </div>
+
+          <div :id="'nav-wayfinding'" class="dp-sub">
+            <h2 class="dp-h2">Navigation &amp; wayfinding</h2>
+            <p class="dp-p">The top bar auto-hides to keep every view immersive. On settlement routes (surface, dome interior, cluster surface) it collapses to a slim breadcrumb strip showing the chain back to orbit — e.g. <code class="dp-code">Milky Way › Kepler-442 › Kepler-442b</code> for catalog worlds, or <code class="dp-code">Hydra Cluster › NGC3309 · System-3</code> for generated cluster systems. Hover the strip to pause auto-hide; <code class="dp-code">≡</code> reopens the full bar, <code class="dp-code">✕</code> drops to a 3-icon bar (home · search · menu) so the star field is unobstructed.</p>
+            <p class="dp-p">The Cosmic Web view adds a <strong>quick-transit strip</strong> along the bottom edge — your saved settlements, followed by recently visited star systems and surfaces, each one click away. Visits are recorded automatically and kept locally (most recent 12, de-duplicated by route).</p>
+          </div>
+
+          <div :id="'lod-reveal'" class="dp-sub">
+            <h2 class="dp-h2">Granular zoom &amp; data reveal (LOD)</h2>
+            <p class="dp-p">Inside a galaxy cluster (<code class="dp-code">/#/cluster-interior/{slug}</code>), clicking a member galaxy flies the camera to a fixed close orbit and tags the view with a zoom badge:</p>
+            <table class="dp-table">
+              <thead><tr><th>Badge</th><th>Camera distance</th><th>Shows</th></tr></thead>
+              <tbody>
+                <tr><td>◎ OVERVIEW</td><td>&gt; 6.0 su</td><td>Full cluster member field</td></tr>
+                <tr><td>◈ GALAXY VIEW</td><td>1.8 – 6.0 su</td><td>Selected galaxy's detail panel</td></tr>
+                <tr><td>⬡ SYSTEMS VIEW</td><td>&lt; 1.8 su</td><td>Deterministic star-system point cloud (up to 35 systems, spectral-class colours)</td></tr>
+              </tbody>
+            </table>
+            <p class="dp-p">The <strong>Zoom In — Reveal Systems</strong> button drives the camera the rest of the way in; the system count is shown live. The cloud is generated deterministically from the galaxy's ID, so the same galaxy always reveals the same systems on every visit.</p>
+            <div class="dp-callout dp-callout--info">
+              When a revealed galaxy has no real star-system catalog entry yet, the browser console logs a line starting with <code class="dp-code">[LOD] DATA REQUEST</code> naming the missing dataset. This is the same signal used by the Citizen Data Verification science-outreach sessions — see <a class="dp-link" href="#" @click.prevent="scrollTo('science-outreach')">Science &amp; Education Outreach</a>.
+            </div>
+          </div>
+        </section>
+
+        <section :id="'events-section'" class="dp-section">
+          <h1 class="dp-h1">Events &amp; Outreach</h1>
+          <p class="dp-p">The Cosmic Web view also works as a live events calendar. Selected galaxy clusters carry a <strong>CosmicEvent</strong> entry — a pulsing beacon ring at the cluster's sprite, colour-coded by event type. Clicking the cluster opens an event panel with description, countdown, capacity, and pon.ink action links.</p>
+
+          <div :id="'event-types'" class="dp-sub">
+            <h2 class="dp-h2">Event types &amp; beacons</h2>
+            <table class="dp-table">
+              <thead><tr><th>Type</th><th>Beacon colour</th><th>Used for</th></tr></thead>
+              <tbody>
+                <tr><td>LIVE EVENT</td><td><code class="dp-code">#ff6644</code></td><td>Hybrid physical + virtual streamed event</td></tr>
+                <tr><td>WORKSHOP</td><td><code class="dp-code">#44ccaa</code></td><td>Educational / vocational session</td></tr>
+                <tr><td>GALLERY</td><td><code class="dp-code">#cc88ff</code></td><td>Permanent visual-art exhibition node</td></tr>
+                <tr><td>SOUND SESSION</td><td><code class="dp-code">#ffcc44</code></td><td>DJ / production session via pon.ink</td></tr>
+                <tr><td>SETTLEMENT</td><td><code class="dp-code">#ffd480</code></td><td>Permanent virtual property marker</td></tr>
+                <tr><td>SCIENCE OUTREACH</td><td><code class="dp-code">#5599ff</code></td><td>International education / research collaboration session</td></tr>
+              </tbody>
+            </table>
+            <p class="dp-p">Each entry in the registry (<code class="dp-code">src/data/events.ts</code>) is keyed to an X-ray cluster name — e.g. <code class="dp-code">J004156.8+253151</code> — so it renders at exactly the right point on the cosmic map. Timed events show a live countdown; <code class="dp-code">settlement</code> and <code class="dp-code">gallery</code> entries with <code class="dp-code">eventTimeUtc: null</code> are permanent and always lit.</p>
+          </div>
+
+          <div :id="'science-outreach'" class="dp-sub">
+            <h2 class="dp-h2">Science &amp; education outreach</h2>
+            <p class="dp-p">The <code class="dp-code">science-outreach</code> event type connects the cosmic map to international classrooms, astronomy clubs, and citizen-science volunteers — using the same generated-plus-real-catalog data the platform runs on as shared teaching and verification material.</p>
+            <ul class="dp-ul">
+              <li><strong>Open Cosmic Web Session — Galaxy Cluster Tour</strong> · International Astronomy Education Network · a guided live tour of the great voids, Laniakea flow lines, and a galaxy-cluster zoom-in showing the LOD reveal from cluster sprite down to individual member galaxies and their generated star systems. Recorded for asynchronous use across time zones.</li>
+              <li><strong>Citizen Data Verification Sprint — Cluster Member Catalog Review</strong> · Citizen Science Network · volunteers use the Cluster Interior zoom-in reveal to compare procedurally generated galaxy members against real RC3 / VCC / FCC catalog entries. Galaxies flagged via the in-app <code class="dp-code">[LOD] DATA REQUEST</code> console note are queued for the next data-pipeline enrichment pass. Open to students, amateur astronomers, and research partners — a participation badge is issued via pon.ink.</li>
+            </ul>
+            <div class="dp-callout dp-callout--info">
+              This is the first event category built around <em>data interfacing</em> rather than performance or property — every console-logged data gap is a worked example for the next enrichment pass, and every classroom session is a chance to crowdsource verification of the underlying catalogs.
+            </div>
+          </div>
+
+          <div :id="'edu-lessons'" class="dp-sub">
+            <h2 class="dp-h2">Educational lessons — sky generation</h2>
+            <p class="dp-p">Two structured lessons covering how Exotopia computes a unique, physically accurate sky for every settlement — from the coordinate math and parallax pipeline to black hole safe orbital radii and collaborative constellation naming.</p>
+            <table class="dp-table">
+              <thead><tr><th>Lesson</th><th>Audience</th><th>Topics</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td><strong>Reading the Sky from Another World</strong></td>
+                  <td>Grades 8–11</td>
+                  <td>Parallax concept, star addresses (RA/Dec/distance), why constellations change, Kepler-442b and K2-90b examples, classroom activity</td>
+                </tr>
+                <tr>
+                  <td><strong>Mathematics of Synthetic Skies</strong></td>
+                  <td>Grade 12 – Graduate</td>
+                  <td>raDecToVec3 derivation, parallax vector pipeline, starColorFromTeff / Planck SED, angular size formulas, Hill sphere, Roche limit, Schwarzschild / ISCO for M87*, runnable JS code examples</td>
+                </tr>
+              </tbody>
+            </table>
+            <router-link to="/sky-lessons" class="dp-link dp-link--btn">Open sky lessons →</router-link>
+          </div>
         </section>
 
         <section :id="'protocol'" class="dp-section">
@@ -179,7 +256,7 @@
 
         <section :id="'glossary-section'" class="dp-section">
           <h1 class="dp-h1">Glossary</h1>
-          <p class="dp-p">45 canonical terms. In body text, superscript numbers link to these entries: <code class="dp-code">sublunary¹⁰</code> → entry [10].</p>
+          <p class="dp-p">47 canonical terms. In body text, superscript numbers link to these entries: <code class="dp-code">sublunary¹⁰</code> → entry [10].</p>
           <router-link to="/glossary" class="dp-link dp-link--btn">Open full glossary →</router-link>
 
           <div class="dp-gloss-grid q-mt-md">
@@ -264,6 +341,7 @@
               <li><strong>Southern hemisphere cluster coverage thinner</strong> — galactic dust obscures the Norma/Great Attractor region; X-ray data fills some gaps</li>
               <li><strong>Member positions only real for Virgo (VCC) and Fornax (FCC)</strong> — other clusters use procedural King-profile layouts seeded from real richness + X-ray temperature; visual spread is artistic not astrometric</li>
               <li><strong>Moon data is sparse</strong> — individual moon properties approximated from system-level moon count and host planet mass; orbits are Titius-Bode derived</li>
+              <li><strong>In-app data-gap signal</strong> — Cluster Interior's granular zoom (LOD) prints <code class="dp-code">[LOD] DATA REQUEST</code> to the browser console, naming any galaxy that lacks a real star-system catalog entry. These are the same targets reviewed in Citizen Data Verification science-outreach sessions — see <a class="dp-link" href="#" @click.prevent="scrollTo('science-outreach')">Events &amp; Outreach</a></li>
             </ul>
           </div>
         </section>
@@ -503,6 +581,14 @@ const NAV = [
     { id: 'galaxy-clusters',     label: 'Galaxy Clusters & LOD'  },
     { id: 'system-view',         label: 'Star Systems'           },
     { id: 'settlement-surfaces', label: 'Settlement Surfaces'    },
+    { id: 'nav-wayfinding',      label: 'Navigation & Wayfinding'},
+    { id: 'lod-reveal',          label: 'Granular Zoom (LOD)'    },
+  ]},
+  { id: 'events-section', icon: '📡', label: 'Events & Outreach', items: [
+    { id: 'events-section',   label: 'Overview'                       },
+    { id: 'event-types',      label: 'Event Types & Beacons'          },
+    { id: 'science-outreach', label: 'Science & Education Outreach'   },
+    { id: 'edu-lessons',      label: 'Educational Lessons →'          },
   ]},
   { id: 'protocol', icon: '⬡', label: 'Protocol & Economy', items: [
     { id: 'protocol',     label: 'Overview'              },
@@ -512,7 +598,7 @@ const NAV = [
     { id: 'robot-mule',   label: 'mule-bot'         },
   ]},
   { id: 'glossary-section', icon: '📖', label: 'Glossary', items: [
-    { id: 'glossary-section', label: 'Key Terms (45)' },
+    { id: 'glossary-section', label: 'Key Terms (47)' },
   ]},
   { id: 'chains-section', icon: '🔗', label: 'Networks', items: [
     { id: 'chains-section', label: 'Overview'             },
@@ -580,6 +666,7 @@ function onWindowScroll() {
 }
 
 function scrollTo(id: string) {
+  if (id === 'edu-lessons') { router.push('/sky-lessons'); return }
   const el = document.getElementById(id)
   if (el) {
     // Offset standard scroll positioning so section headers do not hide beneath the fixed top bar
@@ -602,6 +689,12 @@ const DOC_INDEX: DocHint[] = [
   { id: 'galaxy-clusters', section: 'Visualization',   title: 'Galaxy Clusters & LOD', text: 'lod level detail cluster virgo coma norma xray morphology elliptical spiral' },
   { id: 'system-view',     section: 'Visualization',   title: 'Star Systems',           text: 'planet orbit multiplanet multimoon lagrange l4 l5 camera co-orbit' },
   { id: 'settlement-surfaces', section: 'Visualization', title: 'Settlement Surfaces', text: 'dome surface stone circle xray dkmat dark matter pyramid exoplanet ground' },
+  { id: 'nav-wayfinding',  section: 'Visualization',   title: 'Navigation & Wayfinding', text: 'auto-hide breadcrumb strip quick transit recent settlements icons bar header navigation' },
+  { id: 'lod-reveal',      section: 'Visualization',   title: 'Granular Zoom (LOD)',   text: 'lod zoom reveal cluster interior overview galaxy systems view system cloud data request console' },
+  { id: 'events-section',  section: 'Events',          title: 'Events Overview',       text: 'cosmic event beacon ring panel countdown community pon.ink' },
+  { id: 'event-types',     section: 'Events',          title: 'Event Types & Beacons', text: 'live event workshop gallery sound session settlement science outreach beacon colour' },
+  { id: 'science-outreach',section: 'Events',          title: 'Science & Education Outreach', text: 'international education research citizen science data verification sprint cluster tour data request' },
+  { id: 'edu-lessons',     section: 'Events',          title: 'Educational Lessons — Sky Generation', text: 'parallax sky lessons kepler k2-90 pleiades constellation math exomoon black hole isco hill sphere roche raDecToVec3 grade school classroom' },
   { id: 'exolocation',     section: 'Protocol',        title: 'Exolocation Addresses', text: 'coordinate system trophic level sublunary syzygy liminal exo-surface-v1 lagrange' },
   { id: 'sunlight-nft',    section: 'Protocol',        title: '$SUNLIGHT NFT',         text: 'sound music creative recording polygon license royalty bars' },
   { id: 'art-tokens',      section: 'Protocol',        title: 'ART Tokens',            text: 'activity reward eco-ops sponsor water farm field work token resellable' },
@@ -671,6 +764,8 @@ const KEY_TERMS = [
   { id: 41,  term: 'SCD Hub',       short: 'Sustainable Community Development Hub — US non-profit building digital infrastructure for community resilience.' },
   { id: 42,  term: 'E8 Coxeter Lattice', short: 'Mathematical basis for the wormhole conduit network transit routing geometry.' },
   { id: 45,  term: 'Hub Approvideo', short: 'SCD Hub curated video resource library — maintained by mule-bot.' },
+  { id: 46,  term: 'Science Outreach Event', short: 'A cosmic-map session run with international education or research partners — focused on data, not performance.' },
+  { id: 47,  term: 'LOD Data Reveal', short: 'Progressive zoom-in disclosure of generated vs. catalog star-system data for a galaxy cluster member.' },
 ]
 
 const CATALOG_ROWS = [

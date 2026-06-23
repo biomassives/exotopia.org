@@ -3,6 +3,7 @@
   <q-page class="viz-overlay-page"
     @mousemove="onHover"
     @mouseleave="clearHover"
+    @touchmove.passive="onTouchMove"
     @click="onClick"
     @dblclick="onDblClick"
   >
@@ -308,7 +309,7 @@
           </div>
           <div class="ctx-div" />
           <q-btn dense unelevated size="xs" color="amber-8" class="full-width"
-            icon="scatter_plot" label="Open Galaxy Map"
+            icon="scatter_plot" label="Milky Way Map"
             @click="$router.push('/galaxy')" />
         </div>
       </template>
@@ -366,11 +367,65 @@
       </div><!-- /ctx-panel-body -->
     </div>
 
-    <!-- Hover tooltip -->
-    <div v-if="hoveredLabel" class="hover-box" :style="hoverStyle">
+    <!-- Hover tooltip (non-conduit objects) -->
+    <div v-if="hoveredLabel && !conduitMeta" class="hover-box" :style="hoverStyle">
       <div class="text-caption text-blue-grey-1 text-weight-medium">{{ hoveredLabel.name }}</div>
       <div class="text-caption text-cyan-5">{{ hoveredLabel.type }}</div>
       <div v-if="hoveredLabel.detail" class="text-caption text-blue-grey-4 q-mt-xs">{{ hoveredLabel.detail }}</div>
+    </div>
+
+    <!-- Conduit meta-map panel -->
+    <div v-if="conduitMeta" class="conduit-meta-panel" :style="hoverStyle">
+      <div class="cmp-title">{{ conduitMeta.conduit.name }}</div>
+      <div class="cmp-void">{{ conduitMeta.conduit.voidName }} · transit node</div>
+
+      <!-- Radar SVG: viewBox -80 to +80 → 160×160px; scale 1 Mpc = 0.2 SVG units -->
+      <svg width="160" height="160" viewBox="-80 -80 160 160" class="cmp-radar">
+        <!-- Background -->
+        <rect x="-80" y="-80" width="160" height="160" fill="rgba(0,8,20,0.6)"/>
+        <!-- Distance rings: 100, 200, 400 Mpc -->
+        <circle cx="0" cy="0" r="20"  fill="none" stroke="rgba(0,200,255,0.18)" stroke-width="0.5"/>
+        <circle cx="0" cy="0" r="40"  fill="none" stroke="rgba(0,200,255,0.12)" stroke-width="0.5"/>
+        <circle cx="0" cy="0" r="80"  fill="none" stroke="rgba(0,200,255,0.06)" stroke-width="0.5"/>
+        <text x="2" y="-21" font-size="5.5" fill="rgba(0,180,220,0.4)">100 Mpc</text>
+        <text x="2" y="-41" font-size="5.5" fill="rgba(0,180,220,0.3)">200 Mpc</text>
+        <!-- Crosshairs -->
+        <line x1="-80" y1="0" x2="80" y2="0" stroke="rgba(0,200,255,0.09)" stroke-width="0.4"/>
+        <line x1="0" y1="-80" x2="0" y2="80" stroke="rgba(0,200,255,0.09)" stroke-width="0.4"/>
+        <!-- This conduit at center -->
+        <polygon points="0,-5.5 3.5,3 -3.5,3" fill="#00e5ff" opacity="0.95"/>
+        <polygon points="0,5.5 3.5,-3 -3.5,-3" fill="#00e5ff" opacity="0.55"/>
+        <!-- Neighbors (sorted by distance; nearest plotted on top) -->
+        <g v-for="n in conduitMeta.neighbors.slice().reverse()" :key="n.name">
+          <g :transform="`translate(${Math.min(73,Math.max(-73, n.dx*0.2))},${Math.min(73,Math.max(-73,-n.dz*0.2))})`">
+            <circle    v-if="n.kind==='cluster'"  cx="0" cy="0" r="3.5" :fill="n.color" opacity="0.78"/>
+            <polygon   v-else-if="n.kind==='bh'"  points="0,-5 3.5,0 0,5 -3.5,0" :fill="n.color" opacity="0.92"/>
+            <polygon   v-else                     points="0,-4.5 3,2.5 -3,2.5" fill="none" :stroke="n.color" stroke-width="0.9"/>
+            <text v-if="n.distMpc < 300" dx="5" dy="3" font-size="5.5" :fill="n.color" opacity="0.72">
+              {{ n.name.length > 18 ? n.name.slice(0,17) + '…' : n.name }}
+            </text>
+          </g>
+        </g>
+      </svg>
+
+      <!-- Stats row -->
+      <div class="cmp-stats">
+        <span class="cmp-stat cmp-stat--bh"
+              v-if="conduitMeta.neighbors.filter(n => n.kind==='bh').length">
+          ⬡ {{ conduitMeta.neighbors.filter(n => n.kind==='bh').length }} BH
+        </span>
+        <span class="cmp-stat cmp-stat--cl">
+          ✦ {{ conduitMeta.neighbors.filter(n => n.kind==='cluster').length }} clusters
+        </span>
+        <span class="cmp-stat cmp-stat--co">
+          ◈ {{ conduitMeta.neighbors.filter(n => n.kind==='conduit').length }} links
+        </span>
+      </div>
+      <div class="cmp-strat">
+        STRATEGIC VALUE
+        <span :style="{ color: stratColor, fontWeight: 'bold' }">{{ conduitMeta.stratValue }}</span>/100
+      </div>
+      <div class="cmp-hint">click to open transit panel</div>
     </div>
 
     <!-- Side info panel (shown when cluster/conduit is selected) -->
@@ -425,7 +480,7 @@
               No catalogued systems in this conduit's range.
             </div>
             <q-separator color="blue-grey-9" class="q-mt-sm q-mb-sm" />
-            <q-btn flat dense size="xs" color="blue-grey-5" icon="scatter_plot" label="Galaxy map"
+            <q-btn flat dense size="xs" color="blue-grey-5" icon="scatter_plot" label="Milky Way map"
               @click="$router.push('/galaxy')" />
           </template>
         </template>
@@ -462,6 +517,27 @@
           <div v-if="selected.details?.['Notes']" class="q-mt-xs text-caption text-cyan-8" style="font-size:8px;line-height:1.4">
             {{ selected.details['Notes'] }}
           </div>
+
+          <!-- BH first-class navigation — shown when this galaxy hosts a black hole -->
+          <template v-if="selected.isBH">
+            <q-separator color="amber-9" class="q-my-sm" />
+            <div class="text-caption q-mb-xs" style="color:#ffaa33;letter-spacing:0.08em">
+              BLACK HOLE · ORBITAL ZONE
+            </div>
+            <div class="text-caption text-blue-grey-5 q-mb-sm" style="font-size:9px;line-height:1.5">
+              Safe settlement beyond ISCO (3× Schwarzschild radius). Ultra-massive BHs offer
+              extreme gravitational lensing from stable orbital zones.
+            </div>
+            <q-btn
+              dense rounded unelevated size="sm" color="amber-9" class="full-width q-mb-xs"
+              icon="mdi-orbit"
+              label="Enter Host Cluster"
+              @click="$router.push(`/cluster-interior/${clusterSlug(selected.details['Cluster'] ?? '')}`)"
+            />
+            <div class="text-caption text-blue-grey-7 q-mt-xs" style="font-size:9px">
+              Full BH accretion zone scene · planned v1.2
+            </div>
+          </template>
         </template>
 
         <!-- Named cluster navigation -->
@@ -696,6 +772,29 @@
         </div>
       </Transition>
     </div>
+    <!-- ── Quick transit strip — settlements + recent locations ────────── -->
+    <Transition name="qt-appear">
+      <div v-if="quickTransitItems.length" class="qt-strip">
+        <div class="qt-label">QUICK TRANSIT</div>
+        <div class="qt-scroll">
+          <button
+            v-for="item in quickTransitItems"
+            :key="item.route"
+            class="qt-chip"
+            :class="item.isSettle ? 'qt-chip--settle' : 'qt-chip--recent'"
+            :title="item.sublabel"
+            @click="$router.push(item.route)"
+          >
+            <q-icon :name="item.icon" size="11px" class="qt-icon" />
+            <span class="qt-name">{{ item.label }}</span>
+          </button>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- ── Welcome overlay — role-aware entry panel ───────────────────── -->
+    <WelcomeOverlay ref="welcomeOverlay" />
+
   </q-page>
 </template>
 
@@ -722,6 +821,10 @@ import { usePortalStore }                                    from 'src/stores/po
 import { useGalaxyStore }                                    from 'src/stores/galaxy'
 import { useSceneTransitionStore }                           from 'src/stores/scene-transition'
 import DefenderNav                                           from 'src/components/DefenderNav.vue'
+import WelcomeOverlay                                        from 'src/components/WelcomeOverlay.vue'
+import { useSettlements }                                    from 'src/lib/settlements'
+import { useRecentLocations }                                from 'src/composables/useRecentLocations'
+import type { SettlementRecord }                             from 'src/lib/settlements'
 import type { DefenderNavData, CosmicStripEntry, ConduitStripEntry, DefenderTarget } from 'src/lib/defender-nav.types'
 import {
   CLUSTERS,
@@ -751,6 +854,7 @@ import {
   randomClusterSpectral,
   seededRng,
 } from 'src/lib/star-sprites'
+import { VOID_VERT, VOID_FRAG } from 'src/lib/void-shader'
 import { disposeScene }                          from 'src/lib/three-utils'
 import { loadOracleCluster, prewarmOracleIndex } from 'src/lib/galaxy-oracle'
 import type { OracleGalaxy } from 'src/data/galaxy-oracle.types'
@@ -778,6 +882,82 @@ const transition   = useSceneTransitionStore()
 const hoveredLabel = ref<{ name: string; type: string; detail?: string } | null>(null)
 const hoverStyle   = ref({ left: '0px', top: '0px' })
 
+// ── Conduit meta-map hover ────────────────────────────────────────────────────
+const hoveredConduitData = ref<WormholeConduit | null>(null)
+
+interface ConduitNeighbor {
+  name:     string
+  kind:     'cluster' | 'bh' | 'conduit'
+  distMpc:  number
+  dx:       number
+  dz:       number
+  detail:   string
+  color:    string
+}
+
+const conduitMeta = computed(() => {
+  const c = hoveredConduitData.value
+  if (!c) return null
+
+  const cPos = c.pos   // already in Mpc
+  const neighbors: ConduitNeighbor[] = []
+
+  // Named clusters
+  for (const cl of CLUSTERS) {
+    if (cl.distMpc === 0) continue
+    const clScene = clusterScenePos(cl)
+    const clPos   = new THREE.Vector3(clScene.x * 15, clScene.y * 15, clScene.z * 15)
+    const dist    = cPos.distanceTo(clPos)
+    if (dist > 500) continue
+    const scColor = cl.supercluster === 'Laniakea'       ? '#4499ff'
+                  : cl.supercluster === 'Perseus-Pisces' ? '#ff6633'
+                  : cl.supercluster === 'Coma'           ? '#55ee88'
+                  : cl.supercluster === 'Virgo'          ? '#cc88ff'
+                  :                                        '#8899aa'
+    neighbors.push({ name: cl.name, kind: 'cluster', distMpc: dist,
+      dx: clPos.x - cPos.x, dz: clPos.z - cPos.z,
+      detail: cl.supercluster ?? '', color: scColor })
+  }
+
+  // BH host galaxies inside named clusters
+  for (const cl of CLUSTERS) {
+    if (!cl.brightGalaxies?.length) continue
+    const clScene = clusterScenePos(cl)
+    const clPos   = new THREE.Vector3(clScene.x * 15, clScene.y * 15, clScene.z * 15)
+    const dist    = cPos.distanceTo(clPos)
+    if (dist > 500) continue
+    for (const bg of cl.brightGalaxies!) {
+      if (!bg.bhType) continue
+      neighbors.push({ name: bg.name, kind: 'bh', distMpc: dist,
+        dx: clPos.x - cPos.x, dz: clPos.z - cPos.z,
+        detail: bg.bhMass ?? bg.bhType,
+        color: bg.bhType === 'ULSMBH' ? '#ff9933' : '#8899ff' })
+    }
+  }
+
+  // Other conduits
+  for (const other of buildConduits()) {
+    if (other.name === c.name) continue
+    const dist = cPos.distanceTo(other.pos)
+    neighbors.push({ name: other.name, kind: 'conduit', distMpc: dist,
+      dx: other.pos.x - cPos.x, dz: other.pos.z - cPos.z,
+      detail: other.voidName, color: '#00e5ff' })
+  }
+
+  neighbors.sort((a, b) => a.distMpc - b.distMpc)
+
+  const bhNear  = neighbors.filter(n => n.kind === 'bh'      && n.distMpc < 300).length
+  const clNear  = neighbors.filter(n => n.kind === 'cluster' && n.distMpc < 300).length
+  const stratValue = Math.min(100, Math.round(bhNear * 20 + clNear * 6 + 10))
+
+  return { conduit: c, neighbors: neighbors.slice(0, 9), stratValue }
+})
+
+const stratColor = computed(() => {
+  const v = conduitMeta.value?.stratValue ?? 0
+  return v > 60 ? '#44ff88' : v > 30 ? '#ffaa33' : '#66ccff'
+})
+
 interface SelectedInfo {
   name:             string
   type:             string
@@ -789,6 +969,7 @@ interface SelectedInfo {
   isConduit?:       boolean
   isMilkyWay?:      boolean
   isBrightGalaxy?:   boolean
+  isBH?:             boolean
   isClusterMember?:   boolean   // any galaxy sprite in an active LOD cluster
   memberMorph?:       string    // Hubble type of the clicked member
   memberName?:        string    // catalogue name if known
@@ -919,6 +1100,10 @@ function onCosmicViewModeChange(mode: 'natural' | 'xray' | 'dark_matter') {
     mat.color.setHex(cfg.color)
     mat.emissive.setHex(cfg.emissive)
     mat.emissiveIntensity = cfg.intensity
+    mesh.scale.setScalar(cfg.scale)
+  }
+  // Lower pyramids share the same material but need scale updated independently
+  for (const mesh of conduitLowerMeshes) {
     mesh.scale.setScalar(cfg.scale)
   }
 }
@@ -1077,8 +1262,10 @@ interface HitTarget {
 }
 let hitTargets: HitTarget[] = []
 
-// conduit meshes for pulse animation
+// conduit meshes — upper pyramid (primary hit target, rotation/scale driver)
 let conduitMeshes: THREE.Mesh[] = []
+// conduit lower pyramids — share material with upper; synced in animation tick
+let conduitLowerMeshes: THREE.Mesh[] = []
 
 // BH ring meshes — slow rotation animation (one ring per SMBH/ULSMBH galaxy)
 let bhRingMeshes: THREE.Mesh[] = []
@@ -1086,8 +1273,19 @@ let bhRingMeshes: THREE.Mesh[] = []
 // Great Attractor convergence rings — inward-pulsing indicator
 let gaRingMeshes: THREE.Mesh[] = []
 
-// ── Void iridescent lens state ────────────────────────────────────────────────
-let voidUniforms: { uTime: { value: number }; uColor: { value: THREE.Color }; uColor2: { value: THREE.Color } }[] = []
+// ── Void HSW membrane state ───────────────────────────────────────────────────
+type VoidUniforms = {
+  uTime:       { value: number }
+  uColor:      { value: THREE.Color }
+  uColor2:     { value: THREE.Color }
+  uPointer:    { value: THREE.Vector2 }
+  uPointerStr: { value: number }
+}
+let voidUniforms: VoidUniforms[] = []
+
+// Void pointer tracking — CosmicPage already has mouseNDC updated by onHover
+let _voidPointerStr = 0
+let _voidLastMove   = 0
 
 // ── X-ray cluster LOD tracking ────────────────────────────────────────────────
 
@@ -1205,59 +1403,7 @@ const LOD_NAMED_NEAR = 0.55  // slightly larger so catalog members appear earlie
 // Countdown interval handle
 let countdownInterval: ReturnType<typeof setInterval> | null = null
 
-// ── GLSL — void aetheric lens (Fresnel iridescent membrane) ──────────────────
-
-const VOID_VERT = /* glsl */`
-  varying vec3 vNormal;
-  varying vec3 vViewDir;
-  varying vec3 vObjPos;
-  void main() {
-    vNormal   = normalize(normalMatrix * normal);
-    vObjPos   = position;
-    vec4 mv   = modelViewMatrix * vec4(position, 1.0);
-    vViewDir  = normalize(-mv.xyz);
-    gl_Position = projectionMatrix * mv;
-  }
-`
-
-const VOID_FRAG = /* glsl */`
-  uniform float uTime;
-  uniform vec3  uColor;
-  uniform vec3  uColor2;
-  varying vec3  vNormal;
-  varying vec3  vViewDir;
-  varying vec3  vObjPos;
-
-  void main() {
-    float cosA = abs(dot(vNormal, vViewDir));
-    float rim  = pow(1.0 - cosA, 1.7);
-    float rimS = pow(1.0 - cosA, 4.2);
-
-    float band1 = sin(vObjPos.x * 2.1 + vObjPos.y * 1.6 + uTime * 0.32) * 0.5 + 0.5;
-    float band2 = sin(vObjPos.y * 2.4 + vObjPos.z * 1.8 - uTime * 0.26) * 0.5 + 0.5;
-    float cmix  = band1 * band2;
-    float iri   = pow(rim, 0.6) * 0.38;
-
-    float sp = sin(vObjPos.x * 24.0 + uTime * 3.3)
-             * sin(vObjPos.z * 19.0 + uTime * 2.7) * 0.5 + 0.5;
-    sp = pow(sp, 4.5) * 0.6;
-
-    float shim = sin(vObjPos.x * 8.4 + uTime * 0.9)
-               * sin(vObjPos.z * 7.1 + uTime * 1.2) * 0.16 + 0.84;
-    float roll = sin(vObjPos.y * 5.5 + vObjPos.x * 3.3 + uTime * 0.55) * 0.10 + 0.90;
-
-    vec3 col = mix(uColor, uColor2, clamp(cmix + iri, 0.0, 1.0));
-    col = mix(col, col * 1.55 + 0.28, rimS * 0.45);
-    col += vec3(sp * rim * 0.9);
-    col = clamp(col, 0.0, 1.2);
-
-    float alpha = rim * shim * roll * 0.72
-                + rimS * 0.22
-                + sp * rim * 0.38;
-
-    gl_FragColor = vec4(col, clamp(alpha, 0.0, 0.94));
-  }
-`
+// VOID_VERT / VOID_FRAG imported from src/lib/void-shader.ts
 
 // Complementary hue pairs for void iridescence — cycles through 8 distinct looks
 const VOID_PAIRS: [[number,number,number],[number,number,number]][] = [
@@ -1374,7 +1520,7 @@ function buildVoids() {
     const wireGeo = new THREE.SphereGeometry(r, 20, 12)
     const wireMat = new THREE.MeshBasicMaterial({
       color: v.color === 0x00050e ? 0x001133 : v.color,
-      wireframe: true, transparent: true, opacity: 0.07, depthWrite: false,
+      wireframe: true, transparent: true, opacity: 0.03, depthWrite: false,
     })
     const wire = new THREE.Mesh(wireGeo, wireMat)
     wire.position.copy(pos)
@@ -1413,10 +1559,12 @@ function buildVoids() {
       const colA = new THREE.Color().setHSL(...hslA)
       const colB = new THREE.Color().setHSL(...hslB)
 
-      const uniforms = {
-        uTime:   { value: 0 },
-        uColor:  { value: colA },
-        uColor2: { value: colB },
+      const uniforms: VoidUniforms = {
+        uTime:       { value: 0 },
+        uColor:      { value: colA },
+        uColor2:     { value: colB },
+        uPointer:    { value: new THREE.Vector2(0, 0) },
+        uPointerStr: { value: 0 },
       }
       voidUniforms.push(uniforms)
 
@@ -1436,7 +1584,7 @@ function buildVoids() {
       const inner = new THREE.Mesh(
         new THREE.SphereGeometry(r * 0.96, 14, 10),
         new THREE.MeshBasicMaterial({
-          color: 0x000106, transparent: true, opacity: 0.15,
+          color: 0x000106, transparent: true, opacity: 0.08,
           side: THREE.BackSide, depthWrite: false,
         }),
       )
@@ -1821,7 +1969,7 @@ function buildMilkyWayGalaxy(
 
   hitTargets.push({
     mesh: hitMesh,
-    label: { name: 'Milky Way', type: 'Our Galaxy — click to enter', detail: 'Galaxy view' },
+    label: { name: 'Milky Way', type: 'Our home galaxy — click to enter', detail: 'Milky Way star map' },
     info: {
       name: 'Milky Way', type: 'Our Galaxy',
       icon: 'scatter_plot', iconColor: 'amber',
@@ -1998,6 +2146,7 @@ function buildBrightGalaxies(cluster: CosmicCluster, clusterPos: THREE.Vector3, 
         icon:            bg.bhType ? 'mdi-circle-double' : 'mdi-star-four-points',
         iconColor:       bg.bhType === 'ULSMBH' ? 'amber-4' : 'amber-3',
         isBrightGalaxy:  true,
+        isBH:            !!bg.bhType,
         details: {
           'Cluster':     cluster.name,
           'Class':       bg.type,
@@ -2022,29 +2171,46 @@ function buildConduitMarkers() {
   for (const conduit of conduits) {
     const pos = conduit.pos.clone().multiplyScalar(1 / 15)  // Mpc → scene units
 
-    // Marker: small upward-pointing tetrahedron (4-sided cone)
-    const geo = new THREE.ConeGeometry(0.18, 0.55, 4)
+    // Shared material for both pyramid halves — changing it affects both simultaneously
     const mat = new THREE.MeshStandardMaterial({
       color: 0x00e5ff, emissive: 0x00e5ff, emissiveIntensity: 1.2,
     })
-    const mesh = new THREE.Mesh(geo, mat)
-    mesh.position.copy(pos)
-    mesh.userData = { conduit }
-    pageGroup.add(mesh)
-    conduitMeshes.push(mesh)
 
-    // Ring glow
-    const ringGeo = new THREE.RingGeometry(0.22, 0.32, 20)
+    // Upper pyramid — taller, pointing up; this is the primary hit + conduitMeshes entry
+    const upperGeo = new THREE.ConeGeometry(0.13, 0.20, 4)
+    const upper = new THREE.Mesh(upperGeo, mat)
+    upper.position.copy(pos)
+    upper.userData = { conduit }
+    pageGroup.add(upper)
+    conduitMeshes.push(upper)
+
+    // Edge wireframe on upper for 3D depth definition
+    const edgesGeo = new THREE.EdgesGeometry(upperGeo)
+    const edgesMat = new THREE.LineBasicMaterial({ color: 0x80ffff, transparent: true, opacity: 0.55 })
+    upper.add(new THREE.LineSegments(edgesGeo, edgesMat))
+
+    // Lower pyramid — shorter, inverted; shares material so mode color changes propagate
+    const lowerGeo = new THREE.ConeGeometry(0.13, 0.14, 4)
+    const lower = new THREE.Mesh(lowerGeo, mat)
+    lower.position.copy(pos)
+    lower.position.y -= 0.17   // base joins upper base at pos.y - 0.10; tip at pos.y - 0.24
+    lower.rotation.x = Math.PI
+    lower.userData = { conduit }
+    pageGroup.add(lower)
+    conduitLowerMeshes.push(lower)
+
+    // Compact ring glow at the waist of the double pyramid
+    const ringGeo = new THREE.RingGeometry(0.17, 0.25, 20)
     const ringMat = new THREE.MeshBasicMaterial({
       color: 0x00e5ff, side: THREE.DoubleSide, transparent: true,
-      opacity: 0.4, depthWrite: false, blending: THREE.AdditiveBlending,
+      opacity: 0.35, depthWrite: false, blending: THREE.AdditiveBlending,
     })
     const ring = new THREE.Mesh(ringGeo, ringMat)
-    ring.position.copy(pos).setY(pos.y - 0.05)
+    ring.position.copy(pos).setY(pos.y - 0.08)
     ring.rotation.x = -Math.PI / 2
     pageGroup.add(ring)
 
-    // Hit target
+    // Hit targets — register both halves so click on lower half also selects
     const info: SelectedInfo = {
       name:             conduit.name,
       type:             'Wormhole Conduit',
@@ -2059,7 +2225,9 @@ function buildConduitMarkers() {
       isConduit:        true,
       conduitVoidName:  conduit.voidName,
     }
-    hitTargets.push({ mesh, label: { name: conduit.name, type: 'Wormhole Conduit', detail: conduit.voidName }, info })
+    const label = { name: conduit.name, type: 'Wormhole Conduit', detail: conduit.voidName }
+    hitTargets.push({ mesh: upper, label, info })
+    hitTargets.push({ mesh: lower, label, info })
   }
 }
 
@@ -3069,6 +3237,7 @@ function updateNamedLod() {
 }
 
 function enterCluster() {
+  if (!camera || !controls) return
   if (!selected.value) return
   const entry = namedLodEntries.find(e => e.cluster.name === selected.value!.name)
 
@@ -3203,6 +3372,7 @@ function addTextMarker(pos: THREE.Vector3, label: string, color: number, opacity
 
 /** Fly camera back out to the cluster overview distance so the whole field is visible. */
 function exitCluster() {
+  if (!camera || !controls) return
   const entry = activeNamedLodEntry ?? activeLodEntry
   if (!entry) return
   const target  = entry.pos.clone()
@@ -3220,6 +3390,7 @@ function exitCluster() {
 
 /** Fly camera to a cluster-wide overview position so all member sprites are framed. */
 function centerOnCluster() {
+  if (!camera || !controls) return
   const entry = activeNamedLodEntry ?? activeLodEntry
   if (!entry) return
   const target      = entry.pos.clone()
@@ -3273,12 +3444,22 @@ function navigateClusterMember(delta: number) {
 
 // ── Interaction ───────────────────────────────────────────────────────────────
 
+function onTouchMove(e: TouchEvent) {
+  const t = e.touches[0]
+  if (!t || !camera) return
+  const w = window.innerWidth, h = window.innerHeight - 44
+  mouseNDC.x =  (t.clientX / w) * 2 - 1
+  mouseNDC.y = -((t.clientY - 44) / h) * 2 + 1
+  _voidLastMove = performance.now()
+}
+
 function onHover(e: MouseEvent) {
   if (!camera) return
   // Use viewport dimensions (canvas fills the full viewport below the nav bar)
   const w = window.innerWidth, h = window.innerHeight - 44
   mouseNDC.x =  (e.clientX / w) * 2 - 1
   mouseNDC.y = -((e.clientY - 44) / h) * 2 + 1
+  _voidLastMove = performance.now()
   hoverStyle.value = { left: (e.clientX + 14) + 'px', top: (e.clientY + 14) + 'px' }
 
   raycaster.setFromCamera(mouseNDC, camera)
@@ -3288,18 +3469,24 @@ function onHover(e: MouseEvent) {
   if (hits.length) {
     const ht = hitTargets.find(t => t.mesh === hits[0].object)
     hoveredLabel.value = ht?.label ?? null
+    hoveredConduitData.value = ht?.label.type === 'Wormhole Conduit'
+      ? (hits[0].object.userData.conduit ?? null)
+      : null
   } else {
-    hoveredLabel.value = null
+    hoveredLabel.value       = null
+    hoveredConduitData.value = null
   }
 }
 
 function clearHover() {
-  hoveredLabel.value = null
+  hoveredLabel.value       = null
+  hoveredConduitData.value = null
 }
 
 // ── Wheel — aim at nearest cluster; fly-through inside ───────────────────────
 
 function onCanvasWheel(e: WheelEvent) {
+  if (!camera || !controls) return
   // Kill only camera position fly-ins (the long 5s tweens that cause spring-back).
   // Do NOT kill controls.target tweens — enterCluster() needs those to run.
   gsap.killTweensOf(camera.position)
@@ -3596,11 +3783,13 @@ function enterMilkyWay() {
 // ── Camera presets ────────────────────────────────────────────────────────────
 
 function flyToMilkyWay() {
+  if (!camera || !controls) return
   gsap.to(camera.position, { duration: 1.5, x: 1, y: 0.5, z: 4, ease: 'power2.inOut', onUpdate: () => controls.update() })
   gsap.to(controls.target, { duration: 1.5, x: 0, y: 0,   z: 0, ease: 'power2.inOut', onUpdate: () => controls.update() })
 }
 
 function flyToOverview() {
+  if (!camera || !controls) return
   gsap.to(camera.position, { duration: 2.0, x: 8, y: 6, z: 22, ease: 'power2.inOut', onUpdate: () => controls.update() })
   gsap.to(controls.target, { duration: 2.0, x: 3, y: 0, z: 0,  ease: 'power2.inOut', onUpdate: () => controls.update() })
 }
@@ -3688,6 +3877,7 @@ function zoomToProposedOrbit(zone: ProposedZone) {
 /** Remove the current uncommitted draft ring only (one-at-a-time model). */
 let _draftRing: THREE.Object3D | null = null
 function clearDraftRing() {
+  if (!scene) return
   if (_draftRing) {
     scene.remove(_draftRing)
     const idx = _proposalRings.indexOf(_draftRing)
@@ -3698,6 +3888,7 @@ function clearDraftRing() {
 
 /** Remove all proposal rings from the scene. */
 function clearProposalRings() {
+  if (!scene) return
   for (const obj of _proposalRings) scene.remove(obj)
   _proposalRings.length = 0
   _draftRing = null
@@ -3705,6 +3896,7 @@ function clearProposalRings() {
 
 /** Commit the draft zone — render it, track as _draftRing, zoom. */
 function commitProposal() {
+  if (!camera || !controls || !scene) return
   if (!_proposalClickWorld.value) return
   // Replace any previous uncommitted ring before rendering the new one
   clearDraftRing()
@@ -3798,15 +3990,29 @@ function updateClusterLabels(nowMs: number) {
 function cosmicTick(t: number) {
   const now = t * 1000
 
-  // Aetheric lens — void Fresnel membrane time
-  for (const u of voidUniforms) u.uTime.value = t
+  // Void HSW membrane — time + pointer interaction
+  const nowMs = performance.now()
+  const targetStr = (nowMs - _voidLastMove < 2200) ? 1.0 : 0.0
+  _voidPointerStr += (targetStr - _voidPointerStr) * 0.06
+  if (_voidPointerStr < 0.002) _voidPointerStr = 0
 
-  // Pulse conduit markers
+  for (const u of voidUniforms) {
+    u.uTime.value = t
+    u.uPointer.value.copy(mouseNDC)
+    u.uPointerStr.value = _voidPointerStr
+  }
+
+  // Pulse + slow Y-spin on double-pyramid conduit markers
   for (let i = 0; i < conduitMeshes.length; i++) {
     const s = 0.85 + Math.sin(t * 2.2 + i * 1.1) * 0.2
     conduitMeshes[i].scale.setScalar(s)
+    conduitMeshes[i].rotation.y = t * 0.45 + i * 0.8
     ;(conduitMeshes[i].material as THREE.MeshStandardMaterial).emissiveIntensity =
       0.9 + Math.sin(t * 2.2 + i * 1.1) * 0.5
+    if (conduitLowerMeshes[i]) {
+      conduitLowerMeshes[i].scale.setScalar(s)
+      conduitLowerMeshes[i].rotation.y = t * 0.45 + i * 0.8
+    }
   }
 
   // BH rings
@@ -4054,9 +4260,16 @@ function mulberry32(seed: number) {
 
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
 
-onMounted(() => {
-  void galaxyStore.loadData()
+onMounted(async () => {
+  refreshRecent()
+
+  // Await so MainLayout's onMounted (which calls viz.init()) runs first —
+  // CosmicPage can mount before MainLayout when '/' is the entry route, and
+  // initScene() would otherwise see null renderer/scene/camera/controls.
+  await galaxyStore.loadData()
   initScene()
+  if (!camera || !controls || !renderer || !scene) return  // WebGL unavailable — nothing to animate
+
   // Register per-frame logic with the shared render loop
   _stopTick = viz.addTick(cosmicTick)
 
@@ -4147,9 +4360,10 @@ onUnmounted(() => {
   xrayLodEntries   = []
   activeLodEntry   = null
   voidUniforms     = []
-  conduitMeshes    = []
-  bhRingMeshes     = []
-  gaRingMeshes     = []
+  conduitMeshes      = []
+  conduitLowerMeshes = []
+  bhRingMeshes       = []
+  gaRingMeshes       = []
   hitTargets       = []
 
   // Dispose all GPU objects in the page group, then remove it from the scene
@@ -4187,6 +4401,7 @@ function openPonInk(url: string) {
  * viewDist = spriteWidth / (2 × targetFraction × tan(halfFOV))
  */
 function zoomToGalaxyMember(sprite: THREE.Sprite) {
+  if (!camera || !controls) return
   const idx = clusterMemberSprites.value.indexOf(sprite)
   if (idx !== -1) clusterFocusIdx.value = idx
 
@@ -4276,6 +4491,7 @@ function enterXraySystem() {
 }
 
 function flyToActiveEvent() {
+  if (!camera || !controls) return
   if (!activeEvent.value) return
   const entry = xrayLodEntries.find(e => e.cluster.name === activeEvent.value!.clusterName)
   if (!entry) return
@@ -4292,7 +4508,50 @@ const formatEventTime = (iso: string) => {
 
 // ── DefenderNav — cosmic mode ─────────────────────────────────────────────────
 
-const defenderNav = ref<InstanceType<typeof DefenderNav> | null>(null)
+const defenderNav    = ref<InstanceType<typeof DefenderNav>    | null>(null)
+const welcomeOverlay = ref<InstanceType<typeof WelcomeOverlay> | null>(null)
+
+// ── Quick transit — settlements + recently visited locations ──────────────────
+
+const { settlements }                       = useSettlements()
+const { recent: recentLocs, refresh: refreshRecent } = useRecentLocations()
+
+interface QuickTransitItem {
+  route:     string
+  label:     string
+  sublabel:  string
+  icon:      string
+  isSettle:  boolean
+}
+
+const quickTransitItems = computed((): QuickTransitItem[] => {
+  const items: QuickTransitItem[] = []
+  const seen  = new Set<string>()
+
+  for (const s of settlements.value as SettlementRecord[]) {
+    const route = (s.type === 'cluster' && s.clusterSlug && s.memberId)
+      ? `/cluster-surface/${encodeURIComponent(s.clusterSlug)}/${encodeURIComponent(s.memberId)}/0`
+      : `/surface/${encodeURIComponent(s.hostname)}/${encodeURIComponent(s.planetName)}`
+    if (seen.has(route)) continue
+    seen.add(route)
+    items.push({
+      route,
+      label:    s.displayName || s.planetName,
+      sublabel: s.hostname || s.clusterSlug || '',
+      icon:     s.type === 'cluster' ? 'mdi-star-four-points' : 'mdi-home-circle',
+      isSettle: true,
+    })
+  }
+
+  for (const r of recentLocs.value) {
+    if (seen.has(r.route)) continue
+    seen.add(r.route)
+    items.push({ route: r.route, label: r.label, sublabel: r.sublabel, icon: r.icon, isSettle: false })
+    if (items.length >= 10) break
+  }
+
+  return items
+})
 
 function buildCosmicDefenderData(): DefenderNavData {
   const clusters: CosmicStripEntry[] = CLUSTERS.map(c => {
@@ -4337,6 +4596,7 @@ function buildCosmicDefenderData(): DefenderNavData {
 }
 
 function onDefenderCosmicFlyTo(target: DefenderTarget) {
+  if (!camera || !controls) return
   if (target.type === 'cluster') {
     const entry = xrayLodEntries.find(e => e.cluster.name === target.id)
     if (entry) { zoomToXrayCluster(entry); return }
@@ -4399,6 +4659,62 @@ const legendItems = [
   pointer-events: none;
   z-index: 10;
   max-width: 220px;
+}
+
+/* ── Conduit meta-map hover panel ─────────────────────────────────────────── */
+.conduit-meta-panel {
+  position: fixed;
+  background: rgba(1, 6, 18, 0.94);
+  border: 1px solid rgba(0, 229, 255, 0.30);
+  border-radius: 5px;
+  padding: 8px 10px 6px;
+  font-family: monospace;
+  pointer-events: none;
+  z-index: 10;
+  width: 188px;
+}
+.cmp-title {
+  font-size: 10px;
+  font-weight: 600;
+  color: #b0e8ff;
+  letter-spacing: 0.06em;
+  margin-bottom: 1px;
+}
+.cmp-void {
+  font-size: 8px;
+  color: rgba(0, 200, 220, 0.55);
+  margin-bottom: 5px;
+  letter-spacing: 0.05em;
+}
+.cmp-radar {
+  display: block;
+  border-radius: 3px;
+  margin-bottom: 5px;
+}
+.cmp-stats {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 3px;
+}
+.cmp-stat {
+  font-size: 8px;
+  padding: 1px 4px;
+  border-radius: 2px;
+  letter-spacing: 0.03em;
+}
+.cmp-stat--bh  { color: #ff9933; border: 1px solid rgba(255,153,51,0.30); }
+.cmp-stat--cl  { color: #4499ff; border: 1px solid rgba(68,153,255,0.25); }
+.cmp-stat--co  { color: #00e5ff; border: 1px solid rgba(0,229,255,0.20); }
+.cmp-strat {
+  font-size: 8px;
+  color: rgba(180, 210, 230, 0.55);
+  letter-spacing: 0.07em;
+  margin-bottom: 2px;
+}
+.cmp-hint {
+  font-size: 7.5px;
+  color: rgba(0, 229, 255, 0.35);
+  letter-spacing: 0.05em;
 }
 
 .side-panel {
@@ -5170,4 +5486,83 @@ const legendItems = [
   background: rgba(40, 70, 110, 0.55);
   margin: 0 4px;
 }
+
+/* ── Quick transit strip ──────────────────────────────────────────────────── */
+
+.qt-strip {
+  position: absolute;
+  bottom: 22px;
+  left: 0; right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  z-index: 50;
+  padding: 0 20px;
+  pointer-events: auto;
+}
+
+.qt-label {
+  font-family: 'Courier New', monospace;
+  font-size: 8px;
+  letter-spacing: 0.14em;
+  color: rgba(50, 100, 140, 0.50);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.qt-scroll {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 2px 0;
+  max-width: min(820px, calc(100vw - 140px));
+}
+.qt-scroll::-webkit-scrollbar { display: none; }
+
+.qt-chip {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(0, 4, 18, 0.70);
+  border: 1px solid rgba(0, 70, 120, 0.22);
+  border-radius: 20px;
+  padding: 4px 10px 4px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  backdrop-filter: blur(8px);
+  transition: background 0.18s ease, border-color 0.18s ease;
+  flex-shrink: 0;
+}
+.qt-chip:hover {
+  background: rgba(0, 30, 65, 0.92);
+  border-color: rgba(0, 180, 230, 0.42);
+}
+
+.qt-icon { opacity: 0.60; flex-shrink: 0; }
+.qt-name { color: rgba(140, 200, 235, 0.75); }
+
+/* Settlement chips: teal tint */
+.qt-chip--settle {
+  border-color: rgba(0, 170, 155, 0.26);
+  background:   rgba(0, 16, 16, 0.78);
+}
+.qt-chip--settle .qt-icon { color: rgba(0, 200, 185, 0.72); opacity: 1; }
+.qt-chip--settle .qt-name { color: rgba(0, 220, 200, 0.88); }
+.qt-chip--settle:hover {
+  border-color: rgba(0, 210, 190, 0.52);
+  background:   rgba(0, 35, 32, 0.94);
+}
+
+/* Recent chips: blue tint */
+.qt-chip--recent .qt-icon { color: rgba(80, 150, 220, 0.65); opacity: 1; }
+
+/* Slide-up fade-in with a short delay so the 3D scene loads first */
+.qt-appear-enter-active { transition: opacity 0.6s ease 1.2s, transform 0.6s ease 1.2s; }
+.qt-appear-leave-active { transition: opacity 0.25s ease; }
+.qt-appear-enter-from   { opacity: 0; transform: translateY(10px); }
+.qt-appear-leave-to     { opacity: 0; }
 </style>

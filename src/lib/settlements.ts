@@ -1,6 +1,7 @@
 import { ref, computed } from 'vue'
+import { safeRead, safeWrite } from './storage-cipher'
 
-const STORAGE_KEY = 'exotopia_settlements_v1'
+const STORAGE_KEY = 'e8.1'   // opaque — was 'exotopia_settlements_v1'
 
 export interface SettlementRecord {
   key: string           // unique ID — see makeSettlementKey()
@@ -36,20 +37,11 @@ export function moonKey(planetName: string, moonIdx: number, coordVariant: strin
 // ── Reactive store ───────────────────────────────────────────────────────────
 
 function loadFromStorage(): SettlementRecord[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    return raw ? (JSON.parse(raw) as SettlementRecord[]) : []
-  } catch {
-    return []
-  }
+  return safeRead<SettlementRecord[]>(STORAGE_KEY, [])
 }
 
 function saveToStorage(records: SettlementRecord[]) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(records))
-  } catch {
-    // Storage quota or private-mode — fail silently
-  }
+  safeWrite(STORAGE_KEY, records)
 }
 
 // Single shared reactive state (module-level singleton)

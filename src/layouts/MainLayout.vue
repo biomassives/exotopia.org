@@ -4,13 +4,26 @@
     <!-- ── Shared Three.js canvas — persistent across all visualization pages ── -->
     <canvas ref="vizCanvas" class="viz-canvas-root" />
 
+    <!-- ── WebGL unavailable fallback ────────────────────────────────────────── -->
+    <div v-if="vizError" class="webgl-fallback column items-center justify-center">
+      <q-icon name="mdi-video-3d-off" size="40px" color="blue-grey-5" />
+      <div class="text-subtitle2 text-blue-grey-3 q-mt-md">3D visualization unavailable</div>
+      <div class="text-caption text-blue-grey-5 q-mt-xs" style="max-width: 360px; text-align: center">
+        This browser couldn't create a WebGL context — hardware acceleration may be
+        disabled or unsupported. Enable GPU acceleration in your browser settings and reload
+        to view the cosmic visualizations.
+      </div>
+    </div>
+
     <!-- ── Top navigation bar ────────────────────────────────────────────────── -->
-    <div class="exo-bar" :class="{ 'exo-bar--open': !!openSection }">
+    <div class="exo-bar"
+         :class="{ 'exo-bar--open': !!openSection, 'exo-bar--settlement': isSettlementPage }"
+         v-show="showFullExoBar">
 
       <!-- Left: logo + nav groups -->
       <div class="exo-bar__left">
 
-        <div class="exo-logo" @click="navTo('/welcome')">
+        <div class="exo-logo" @click="navTo('/')">
           <div class="exo-orb">E</div>
           <span class="exo-wordmark">
             <span class="ew-exo">EXO</span><span class="ew-topia">TOPIA</span>
@@ -85,7 +98,41 @@
           @click="connectDialog = true"
         />
         <span v-if="wallet.connected" class="bar-wallet-dot" />
+        <button v-if="isSettlementPage" class="settle-bar-x" @click="collapseToSlim" title="Hide navigation">✕</button>
       </div>
+    </div>
+
+    <!-- ── Settlement location strip (auto-hide breadcrumb) ─────────────────── -->
+    <Transition name="settle-strip">
+      <div v-if="isSettlementPage && barMode === 'slim'"
+           class="settle-strip"
+           @mouseenter="pauseAutoHide"
+           @mouseleave="resumeAutoHide">
+        <button class="settle-burger" @click="showFullBar" title="Open navigation">≡</button>
+        <nav class="settle-crumbs">
+          <template v-for="(node, idx) in settlementBreadcrumb" :key="idx">
+            <span v-if="idx > 0" class="settle-sep">›</span>
+            <button v-if="node.route" class="settle-crumb settle-crumb--link" @click="navTo(node.route)">{{ node.label }}</button>
+            <span v-else class="settle-crumb settle-crumb--current">{{ node.label }}</span>
+          </template>
+        </nav>
+        <button class="settle-close" @click="hideStripManually" title="Dismiss">✕</button>
+      </div>
+    </Transition>
+    <!-- ── Collapsed icon bar — visible when bar is auto-hidden on any page ─── -->
+    <!-- Full-width so hovering anywhere in the top zone restores the bar       -->
+    <div v-if="barMode === 'icons'"
+         class="exo-icons-bar"
+         @mouseenter="onIconsBarHover">
+      <button class="exo-icon-btn" @click="navTo('/')" title="Home">
+        <q-icon name="home" size="15px" />
+      </button>
+      <button class="exo-icon-btn" @click="showFullBar" title="Search">
+        <q-icon name="search" size="15px" />
+      </button>
+      <button class="exo-icon-btn" @click="showFullBar" title="Navigation">
+        <span class="exo-icon-burger">≡</span>
+      </button>
     </div>
 
     <!-- ── Record widget ────────────────────────────────────────────────────── -->
@@ -217,7 +264,7 @@
               </g>
 
               <!-- ② GALAXY VIEW bubble — cx=447, cy=57 -->
-              <g :style="{ opacity: hoveredExplore === null ? 0.68 : hoveredExplore === 'Galaxy View' ? 1 : 0.22, transition: 'opacity 0.40s ease' }">
+              <g :style="{ opacity: hoveredExplore === null ? 0.68 : hoveredExplore === 'Milky Way' ? 1 : 0.22, transition: 'opacity 0.40s ease' }">
                 <rect x="388" y="18" width="118" height="78" rx="9" fill="rgba(0,4,22,0.84)" stroke="rgba(180,130,255,0.52)" stroke-width="1.2"/>
                 <polygon points="441,96 453,96 447,111" fill="rgba(0,4,22,0.84)" stroke="rgba(180,130,255,0.52)" stroke-width="1.2" stroke-linejoin="round"/>
                 <!-- spiral galaxy -->
@@ -662,6 +709,7 @@ import { usePortalStore }      from 'src/stores/portal'
 import WormholePortal          from 'src/components/WormholePortal.vue'
 import SceneTransition         from 'src/components/SceneTransition.vue'
 import { useVizRenderer }      from 'src/composables/useVizRenderer'
+import { recordVisit }        from 'src/composables/useRecentLocations'
 
 const router      = useRouter()
 const route       = useRoute()
@@ -672,15 +720,18 @@ const portalStore = usePortalStore()
 // ── Persistent Three.js canvas ────────────────────────────────────────────────
 const vizCanvas = ref<HTMLCanvasElement | null>(null)
 const viz       = useVizRenderer()
+const vizError  = ref<string | null>(null)
 
 onMounted(() => {
   if (vizCanvas.value) viz.init(vizCanvas.value)
+  vizError.value = viz.initError
   window.addEventListener('resize', viz.resize)
 })
 
 onUnmounted(() => {
   window.removeEventListener('resize', viz.resize)
   viz.destroy()
+  if (autoHideTimer) clearTimeout(autoHideTimer)
 })
 
 // ── Navigation group definitions ──────────────────────────────────────────────
@@ -710,12 +761,12 @@ const NAV_GROUPS: NavGroup[] = [
         title: 'Cosmic Web',
         desc:  'Navigate the large-scale structure of the universe — voids, filaments, and X-ray clusters.',
         cta:   'Open',
-        route: '/cosmic',
+        route: '/',
         color: 'rgba(80,200,255,0.90)',
         art: { vb: '', svg: '' },
       },
       {
-        title: 'Galaxy View',
+        title: 'Milky Way',
         desc:  'Navigate the galaxy map — star systems, stellar classification, and sky coverage.',
         cta:   'Browse',
         route: '/galaxy',
@@ -1027,7 +1078,7 @@ const ITEM_PANELS: Record<string, ItemPanel> = {
   'Cosmic Web': {
     style: 'cosmic', headline: 'Navigate the cosmic web',
     subline: 'Great voids, Laniakea filaments, and X-ray cluster boundaries.',
-    actions: [{ label: 'Enter Laniakea', route: '/cosmic', primary: true }, { label: 'Boötes Void', route: '/cosmic' }],
+    actions: [{ label: 'Enter Laniakea', route: '/', primary: true }, { label: 'Boötes Void', route: '/' }],
     sessionKey: 'exo_last_cluster', sessionLabel: 'Last cluster',
   },
   'Galaxy Clusters': {
@@ -1047,7 +1098,7 @@ const ITEM_PANELS: Record<string, ItemPanel> = {
   'Settlement Surfaces': {
     style: 'surface', headline: 'Surface & settlement view',
     subline: 'Walk a dome settlement on any confirmed exoplanet.',
-    actions: [{ label: 'Enter surface', route: '/welcome', primary: true }, { label: 'My settlement', route: '/welcome' }],
+    actions: [{ label: 'Enter surface', route: '/planet-systems', primary: true }, { label: 'My settlement', route: '/' }],
     sessionKey: 'exo_last_planet', sessionLabel: 'Resume at',
   },
   'Data Coverage': {
@@ -1176,7 +1227,7 @@ const fieldValues    = reactive<Record<string, string>>({})
 
 const EXPLORE_SCOPE: Record<string, string> = {
   'Cosmic Web':      'L1 · COSMIC SCALE · VOID MAPPING',
-  'Galaxy View':     'L2 · STELLAR NEIGHBORHOOD · 5K+ SYSTEMS',
+  'Milky Way':       'L2 · MILKY WAY · 5K+ SYSTEMS',
   'Galaxy Clusters': 'L2 · XMM CLUSTERS · 345 FIELDS',
   'Planet Systems':  'L3 · CONFIRMED EXOPLANETS · HABITABLE ZONE',
 }
@@ -1236,6 +1287,16 @@ function navTo(path: string) {
 watch(() => route.path, () => { openSection.value = null })
 watch(openSection,      () => { hoveredItem.value  = null })
 
+// Record surface/cluster page visits for quick-transit shortcuts
+watch(() => route.name, (name) => {
+  if (typeof name !== 'string') return
+  recordVisit(
+    name,
+    route.params as Record<string, string>,
+    route.query  as Record<string, string>,
+  )
+}, { immediate: true })
+
 // ── Art strip stars ───────────────────────────────────────────────────────────
 
 const artStars = (() => {
@@ -1259,8 +1320,7 @@ const currentLevelLabel = computed((): string => {
   if (p.startsWith('/galaxy'))       return 'L2 GALAXY'
   if (p.startsWith('/clusters'))     return 'L2 CLUSTERS'
   if (p.startsWith('/planet-systems')) return 'L3 SYSTEMS'
-  if (p.startsWith('/cosmic'))       return 'L1 COSMIC'
-  if (p.startsWith('/welcome'))      return 'L4 SETTLEMENT'
+  if (p === '/' || p.startsWith('/cosmic')) return 'L1 COSMIC'
   if (p.startsWith('/gallery'))      return 'L6 GALLERY'
   if (p.startsWith('/mint'))         return 'MINT'
   if (p.startsWith('/learn'))        return 'LEARN'
@@ -1333,6 +1393,123 @@ function navigateToFirst() {
 function onBlur() {
   setTimeout(() => { searchFocused.value = false }, 150)
 }
+
+// ── Global auto-hide nav bar ───────────────────────────────────────────────────
+// 'full'  — full EXOTOPIA bar visible
+// 'slim'  — settlement location breadcrumb strip (settlement routes only)
+// 'icons' — collapsed to 3 icons; bar hidden to expose the star field
+
+const SETTLEMENT_ROUTES = new Set(['surface', 'dome-interior', 'cluster-surface'])
+
+const isSettlementPage = computed(() => SETTLEMENT_ROUTES.has(route.name as string))
+const showFullExoBar   = computed(() => barMode.value === 'full')
+
+type BarMode = 'full' | 'slim' | 'icons'
+const barMode = ref<BarMode>('full')
+let autoHideTimer: ReturnType<typeof setTimeout> | null = null
+let hoverPaused = false
+
+function scheduleHide(delayMs = 5000) {
+  if (autoHideTimer) clearTimeout(autoHideTimer)
+  autoHideTimer = setTimeout(() => {
+    if (!hoverPaused) barMode.value = 'icons'
+  }, delayMs)
+}
+
+function showSlimStrip() {
+  barMode.value = 'slim'
+  scheduleHide(4500)
+}
+
+function showFullBar() {
+  barMode.value = 'full'
+  if (autoHideTimer) clearTimeout(autoHideTimer)
+  const collapse = isSettlementPage.value
+    ? () => { barMode.value = 'slim'; scheduleHide(4500) }
+    : () => { barMode.value = 'icons' }
+  autoHideTimer = setTimeout(collapse, isSettlementPage.value ? 7000 : 5000)
+}
+
+function collapseToSlim() {
+  barMode.value = isSettlementPage.value ? 'slim' : 'icons'
+  if (isSettlementPage.value) scheduleHide(4500)
+}
+
+function hideStripManually() {
+  barMode.value = 'icons'
+  if (autoHideTimer) clearTimeout(autoHideTimer)
+}
+
+function pauseAutoHide() { hoverPaused = true }
+
+function resumeAutoHide() {
+  hoverPaused = false
+  scheduleHide(isSettlementPage.value ? 3000 : 4000)
+}
+
+function onIconsBarHover() {
+  if (isSettlementPage.value) showSlimStrip()
+  else { barMode.value = 'full'; scheduleHide(4000) }
+}
+
+watch(isSettlementPage, (v) => {
+  if (autoHideTimer) clearTimeout(autoHideTimer)
+  if (v) {
+    barMode.value = 'slim'
+    scheduleHide(4500)
+  } else {
+    barMode.value = 'full'
+    scheduleHide(5000)
+  }
+}, { immediate: true })
+
+// ── Settlement location breadcrumb ─────────────────────────────────────────────
+
+interface BreadcrumbNode { label: string; route?: string }
+
+const settlementBreadcrumb = computed((): BreadcrumbNode[] => {
+  if (!isSettlementPage.value) return []
+  const rName = route.name as string
+
+  if (rName === 'surface' || rName === 'dome-interior') {
+    const host   = String(route.params.hostname   ?? '')
+    const planet = String(route.params.planetName ?? '')
+    const parent = String(route.query.parent      ?? '')
+    const nodes: BreadcrumbNode[] = [
+      { label: 'Milky Way', route: '/galaxy' },
+      { label: host,        route: `/galaxy?focusHost=${encodeURIComponent(host)}` },
+      { label: planet },
+    ]
+    if (parent)                    nodes.push({ label: `Moon · ${parent}` })
+    if (rName === 'dome-interior') nodes.push({ label: 'Interior' })
+    return nodes
+  }
+
+  if (rName === 'cluster-surface') {
+    const slug    = String(route.params.clusterSlug ?? '')
+    const gid     = String(route.params.memberId    ?? '')
+    const clName  = String(route.query.cluster      ?? slug)
+    const sysName = String(route.query.name         ?? `System-${route.params.systemIdx}`)
+    const nPl     = Number(route.query.planets      ?? 3)
+    const sysIdx  = Number(route.params.systemIdx   ?? 0)
+    const pIdx    = sysIdx % Math.max(1, nPl)
+    const pLabel  = `Planet ${String.fromCharCode(98 + pIdx)}`
+    const galLabel = gid.length > 16 ? `${gid.slice(0, 16)}…` : gid
+    const isVoid   = slug.startsWith('void-')
+    const topRoute = isVoid
+      ? `/void/${encodeURIComponent(slug.slice(5))}`
+      : `/clusters?cluster=${encodeURIComponent(slug)}`
+    const galRoute = `/cluster-galaxy/${encodeURIComponent(slug)}/${encodeURIComponent(gid)}`
+    return [
+      { label: isVoid ? 'Void' : clName, route: topRoute },
+      { label: galLabel, route: galRoute },
+      { label: sysName },
+      { label: pLabel },
+    ]
+  }
+
+  return []
+})
 </script>
 
 <style>
@@ -2159,5 +2336,187 @@ function onBlur() {
   z-index: 0;
   display: block;
   pointer-events: none;  /* pages add their own canvas listeners */
+}
+
+.webgl-fallback {
+  position: fixed;
+  top: 44px;
+  left: 0;
+  width: 100vw;
+  height: calc(100vh - 44px);
+  z-index: 1;
+  background: #010208;
+  font-family: 'Courier New', monospace;
+  padding: 24px;
+}
+
+/* ── Collapsed icon bar (home · search · hamburger) ─────────────────────────── */
+
+.exo-icons-bar {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  height: 40px;
+  z-index: 6200;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  gap: 2px;
+  background: rgba(0, 2, 14, 0.22);
+  backdrop-filter: blur(3px);
+  cursor: default;
+  transition: background 0.3s ease;
+}
+.exo-icons-bar:hover {
+  background: rgba(0, 4, 20, 0.55);
+}
+
+.exo-icon-btn {
+  background: none;
+  border: none;
+  color: rgba(90, 150, 200, 0.50);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 5px;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.exo-icon-btn:hover {
+  color: rgba(0, 210, 255, 0.96);
+  background: rgba(0, 60, 110, 0.32);
+}
+
+.exo-icon-burger {
+  font-size: 18px;
+  line-height: 1;
+}
+
+/* ── Settlement slim location strip ─────────────────────────────────────────── */
+
+.settle-strip {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  height: 32px;
+  z-index: 6200;
+  display: flex;
+  align-items: center;
+  background: rgba(0, 4, 18, 0.86);
+  border-bottom: 1px solid rgba(0, 80, 140, 0.18);
+  backdrop-filter: blur(16px) saturate(130%);
+  padding: 0 8px 0 4px;
+}
+
+.settle-burger,
+.settle-close {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: rgba(90, 150, 200, 0.65);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  font-size: 17px;
+  line-height: 1;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.settle-burger:hover,
+.settle-close:hover {
+  color: rgba(0, 210, 255, 0.95);
+  background: rgba(0, 80, 140, 0.22);
+}
+
+.settle-crumbs {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0 6px;
+}
+
+.settle-sep {
+  color: rgba(50, 110, 155, 0.45);
+  font-size: 11px;
+  padding: 0 4px;
+  flex-shrink: 0;
+}
+
+.settle-crumb {
+  font-family: 'Courier New', monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.05em;
+  color: rgba(110, 165, 210, 0.58);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
+  flex-shrink: 1;
+}
+.settle-crumb--current {
+  color: rgba(0, 210, 255, 0.88);
+}
+.settle-crumb--link {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  transition: color 0.15s ease;
+}
+.settle-crumb--link:hover {
+  color: rgba(0, 230, 255, 0.98);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.settle-hover-zone {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  height: 5px;
+  z-index: 6200;
+  cursor: default;
+}
+
+/* Full bar raised above settle-strip when shown on settlement pages */
+.exo-bar--settlement {
+  z-index: 6300;
+}
+
+/* X button inside the full bar (settlement pages only) */
+.settle-bar-x {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: rgba(100, 150, 200, 0.55);
+  cursor: pointer;
+  font-size: 12px;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  margin-left: 2px;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.settle-bar-x:hover {
+  color: rgba(220, 90, 90, 0.92);
+  background: rgba(200, 50, 50, 0.12);
+}
+
+/* Slide-down enter / slide-up leave */
+.settle-strip-enter-active,
+.settle-strip-leave-active {
+  transition: opacity 0.22s ease, transform 0.22s ease;
+}
+.settle-strip-enter-from,
+.settle-strip-leave-to {
+  opacity: 0;
+  transform: translateY(-100%);
 }
 </style>

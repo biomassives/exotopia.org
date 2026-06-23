@@ -26,6 +26,7 @@ let _camera:   THREE.PerspectiveCamera  | null = null
 let _controls: OrbitControls            | null = null
 let _rafId:    number                    = 0
 let _ready     = false
+let _initError: string | null            = null
 
 const _tickFns = new Set<(t: number) => void>()
 
@@ -41,10 +42,17 @@ export function useVizRenderer() {
    * Safe to call again — no-op if already initialized.
    */
   function init(canvas: HTMLCanvasElement) {
-    if (_ready) return
+    if (_ready || _initError) return
     _canvas = canvas
 
-    _renderer = new THREE.WebGLRenderer({ canvas, antialias: true })
+    try {
+      _renderer = new THREE.WebGLRenderer({ canvas, antialias: true })
+    } catch (err) {
+      _initError = err instanceof Error ? err.message : 'WebGL context could not be created.'
+      console.warn('[useVizRenderer] WebGL unavailable — 3D visualization disabled:', _initError)
+      _renderer = null
+      return
+    }
     _renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     _renderer.setSize(_w(), _h())
     _renderer.toneMapping         = THREE.ACESFilmicToneMapping
@@ -58,6 +66,8 @@ export function useVizRenderer() {
     _controls.enableDamping  = true
     _controls.dampingFactor  = 0.1
 
+    _attachRelay()
+
     _ready = true
     _startLoop()
   }
@@ -69,10 +79,12 @@ export function useVizRenderer() {
   function destroy() {
     cancelAnimationFrame(_rafId)
     _tickFns.clear()
+    _detachRelay()
     _controls?.dispose()
     _renderer?.dispose()
     _canvas = null; _renderer = null; _scene = null
     _camera = null; _controls = null; _ready = false
+    _initError = null
   }
 
   /**
@@ -99,8 +111,10 @@ export function useVizRenderer() {
   }
 
   return {
-    /** True once init() has been called. */
+    /** True once init() has succeeded. */
     get ready()    { return _ready    },
+    /** Set if init() failed (e.g. WebGL unavailable). Null when healthy. */
+    get initError(){ return _initError },
     get renderer() { return _renderer },
     get scene()    { return _scene    },
     get camera()   { return _camera   },
@@ -128,4 +142,101 @@ function _startLoop() {
     if (_renderer && _scene && _camera) _renderer.render(_scene, _camera)
   }
   tick()
+}
+
+// ── Pointer/wheel relay ────────────────────────────────────────────────────
+//
+// .viz-canvas-root is `pointer-events:none` (a pure render target — see app.scss):
+// it sits behind each page's transparent `.viz-overlay-page`, which must be the
+// hit-test target so its @click/@mousemove raycasting handlers fire over "empty"
+// scene regions (where no UI panel sits). But OrbitControls — and page handlers
+// like CosmicPage's onCanvasWheel — are bound to the canvas via addEventListener
+// and therefore never receive real browser pointer/wheel events.
+//
+// Relay them: re-dispatch pointerdown/move/up/cancel/wheel/contextmenu onto the
+// canvas, but only those whose real target IS the transparent overlay page itself
+// (an "empty scene" interaction) — never UI panels, which are descendants with
+// their own pointer-events:auto and become the direct target of their own clicks/
+// drags, so they're naturally excluded and won't spuriously rotate the scene.
+// A drag started on empty space keeps relaying by pointerId even if the cursor
+// later crosses over a panel, so OrbitControls doesn't lose the gesture mid-drag.
+
+const _relayedPointers = new Set<number>()
+
+function _isOverlayTarget(e: Event): boolean {
+  const t = e.target as HTMLElement | null
+  return !!t?.classList?.contains('viz-overlay-page')
+}
+
+// Build a non-bubbling clone init dict. `bubbles: false` is essential — without
+// it, the clone dispatched on the canvas bubbles back up to `document` and
+// re-triggers this same relay, recursing infinitely (the cloned pointerdown
+// carries the same pointerId, so the pointermove/up branch below would re-match
+// it forever). OrbitControls only needs the event to land directly on the
+// canvas (it listens on domElement, not document), so non-bubbling is correct.
+function _cloneInit(e: PointerEvent | WheelEvent | MouseEvent) {
+  const m = e as MouseEvent, p = e as PointerEvent, w = e as WheelEvent
+  return {
+    bubbles: false, cancelable: true, composed: false,
+    clientX: m.clientX, clientY: m.clientY, screenX: m.screenX, screenY: m.screenY,
+    button: m.button, buttons: m.buttons, relatedTarget: m.relatedTarget,
+    ctrlKey: m.ctrlKey, shiftKey: m.shiftKey, altKey: m.altKey, metaKey: m.metaKey,
+    pointerId: p.pointerId, pointerType: p.pointerType, isPrimary: p.isPrimary,
+    width: p.width, height: p.height, pressure: p.pressure,
+    tiltX: p.tiltX, tiltY: p.tiltY, twist: p.twist,
+    deltaX: w.deltaX, deltaY: w.deltaY, deltaZ: w.deltaZ, deltaMode: w.deltaMode,
+  }
+}
+
+function _relayPointer(e: PointerEvent) {
+  if (!_canvas) return
+  if (e.type === 'pointerdown') {
+    if (!_isOverlayTarget(e)) return
+    _relayedPointers.add(e.pointerId)
+  } else if (!_relayedPointers.has(e.pointerId)) {
+    return
+  }
+  if (e.type === 'pointerup' || e.type === 'pointercancel') _relayedPointers.delete(e.pointerId)
+  _canvas.dispatchEvent(new PointerEvent(e.type, _cloneInit(e)))
+
+  // OrbitControls' onPointerDown calls canvas.setPointerCapture(pointerId) — which
+  // would silently retarget every subsequent real pointermove/pointerup/click for
+  // this pointer onto the canvas (regardless of cursor position), starving the
+  // overlay page's own raycasting handlers. Re-capture on the real target right
+  // after, so real events keep reaching it; the relay (tracked by pointerId above,
+  // independent of target) keeps forwarding clones to the canvas either way.
+  if (e.type === 'pointerdown') {
+    (e.target as Element)?.setPointerCapture?.(e.pointerId)
+  }
+}
+
+function _relayWheel(e: WheelEvent) {
+  if (!_canvas || !_isOverlayTarget(e)) return
+  e.preventDefault()  // mirrors the canvas-bound listener — block page scroll/pinch-zoom
+  _canvas.dispatchEvent(new WheelEvent(e.type, _cloneInit(e)))
+}
+
+function _relayContextMenu(e: MouseEvent) {
+  if (!_canvas || !_isOverlayTarget(e)) return
+  e.preventDefault()  // mirrors OrbitControls' own contextmenu handler — block right-click menu
+  _canvas.dispatchEvent(new MouseEvent(e.type, _cloneInit(e)))
+}
+
+function _attachRelay() {
+  document.addEventListener('pointerdown',  _relayPointer)
+  document.addEventListener('pointermove',  _relayPointer)
+  document.addEventListener('pointerup',    _relayPointer)
+  document.addEventListener('pointercancel', _relayPointer)
+  document.addEventListener('wheel',        _relayWheel, { passive: false })
+  document.addEventListener('contextmenu',  _relayContextMenu)
+}
+
+function _detachRelay() {
+  document.removeEventListener('pointerdown',  _relayPointer)
+  document.removeEventListener('pointermove',  _relayPointer)
+  document.removeEventListener('pointerup',    _relayPointer)
+  document.removeEventListener('pointercancel', _relayPointer)
+  document.removeEventListener('wheel',        _relayWheel)
+  document.removeEventListener('contextmenu',  _relayContextMenu)
+  _relayedPointers.clear()
 }

@@ -7,7 +7,9 @@
     "dev": "quasar dev",
     "build": "quasar build",
     "lint": "eslint --ext .js,.ts,.vue src",
-    "parse-exoplanets": "python3 parse_exoplanet_export.py"
+    "parse-exoplanets": "python3 parse_exoplanet_export.py",
+    "fetch-exoplanets": "node scripts/fetch-exoplanet-archive.mjs",
+    "fetch-bootes-void": "node scripts/fetch-bootes-void.mjs"
   },
   "dependencies": {
     "@metaplex-foundation/mpl-bubblegum": "^0.7.0",
@@ -19,6 +21,7 @@
     "ethers": "^6.16.0",
     "gsap": "^3.12.5",
     "pinia": "^2.1.7",
+    "playwright": "^1.60.0",
     "quasar": "^2.16.5",
     "three": "^0.164.1",
     "vue": "^3.4.21",

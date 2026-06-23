@@ -424,6 +424,18 @@ const TERMS: GlossTerm[] = [
     body: 'The SCD Hub\'s curated collection of approved video resources. Maintained by the mule-bot as one of its land care specialist domains — new materials surfaced, outdated content flagged, existing catalogue kept organised and findable for field communities.',
     related: [26],
   },
+  {
+    id: 46, category: 'platform', term: 'Science Outreach Event',
+    short: 'A cosmic-map session run jointly with international education or research partners.',
+    body: 'A COSMIC_EVENTS entry of type "science-outreach" — marked on the cosmic map with a blue beacon ring. Used for live cluster tours with astronomy education networks and citizen-science data verification sprints. Unlike sound-session or gallery events, the focus is the underlying dataset itself: comparing generated content against real catalogs and feeding gaps back into the data pipeline.',
+    related: [47, 31],
+  },
+  {
+    id: 47, category: 'astronomical', term: 'LOD Data Reveal',
+    short: 'Progressive disclosure of catalog vs. generated data as the camera zooms into a galaxy cluster member.',
+    body: 'In Cluster Interior view, clicking a galaxy flies the camera to a fixed close distance and tags the view OVERVIEW / GALAXY VIEW / SYSTEMS VIEW based on camera distance. At SYSTEMS VIEW a deterministic star-system cloud is spawned, colour-coded by spectral class. If the galaxy has no real star-system catalog entry, an "[LOD] DATA REQUEST" note is printed to the browser console naming the missing dataset — the same signal used in Citizen Data Verification science-outreach events.',
+    related: [46],
+  },
 ]
 
 // ── Categories ────────────────────────────────────────────────────────────────

@@ -31,11 +31,11 @@
           and spectral type.
         </div>
         <div class="rf-links">
-          <span class="rf-link" @click.stop="go('/cosmic')">Cosmic Web</span>
+          <span class="rf-link" @click.stop="go('/')">Cosmic Web</span>
           <span class="rf-sep">·</span>
-          <span class="rf-link" @click.stop="go('/galaxy')">Galaxy View</span>
+          <span class="rf-link" @click.stop="go('/galaxy')">Milky Way</span>
           <span class="rf-sep">·</span>
-          <span class="rf-link" @click.stop="go('/welcome')">Settlement Dome</span>
+          <span class="rf-link" @click.stop="go('/')">Universe Entry</span>
         </div>
         <button class="rf-cta" @click.stop="go('/galaxy')">Browse planets →</button>
       </div>

@@ -25,7 +25,7 @@
       <div class="ps-sidebar-footer">
         <q-btn
           flat dense size="xs" color="cyan-6"
-          icon="scatter_plot" label="Galaxy map"
+          icon="scatter_plot" label="Milky Way map"
           @click="$router.push('/galaxy?hz=1')"
         />
         <q-btn

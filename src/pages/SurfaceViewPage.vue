@@ -3,6 +3,7 @@
     @mousemove="onMouseMove"
     @mouseleave="hoveredObject = null"
     @click="onCanvasClick"
+    @dblclick="onCanvasDblClick"
   >
 
     <!-- ── X-RAY mode overlays ────────────────────────────────────── -->
@@ -314,36 +315,6 @@
       </div>
     </div>
 
-    <!-- ── Location context panel ────────────────────────────────── -->
-    <div v-if="sceneReady && system" class="loc-panel">
-      <div class="loc-header" @click="locPanelOpen = !locPanelOpen">
-        <q-icon name="mdi-map-marker-radius-outline" size="11px" color="cyan-5" class="q-mr-xs" />
-        <span class="loc-title">LOCATION</span>
-        <q-space />
-        <span class="loc-toggle">{{ locPanelOpen ? '▲' : '▼' }}</span>
-      </div>
-      <Transition name="pip-expand">
-        <div v-if="locPanelOpen" class="loc-body">
-          <div class="loc-tabs">
-            <button :class="['loc-tab', locTab==='galaxy' && 'loc-tab--active']"
-              @click="setLocTab('galaxy')">GALAXY</button>
-            <button :class="['loc-tab', locTab==='cosmic' && 'loc-tab--active']"
-              @click="setLocTab('cosmic')">COSMIC</button>
-          </div>
-          <canvas ref="galCanvas"  class="loc-canvas" v-show="locTab==='galaxy'" width="168" height="112" />
-          <canvas ref="cosmCanvas" class="loc-canvas" v-show="locTab==='cosmic'" width="168" height="112" />
-          <div class="loc-nav">
-            <button v-if="locTab==='galaxy'" class="loc-nav-btn" @click="goBackToGalaxy">
-              <q-icon name="scatter_plot" size="9px" class="q-mr-xs" />Galaxy View
-            </button>
-            <button v-else class="loc-nav-btn" @click="goToCosmic">
-              <q-icon name="mdi-weather-night" size="9px" class="q-mr-xs" />Cosmic View
-            </button>
-          </div>
-        </div>
-      </Transition>
-    </div>
-
     <!-- ── Hover tooltip ───────────────────────────────────────── -->
     <Transition name="fade">
       <div
@@ -400,9 +371,10 @@
           :options="[
             { value: 'orbit',  icon: 'panorama_horizontal' },
             { value: 'zenith', icon: 'filter_center_focus' },
+            { value: 'walk',   icon: 'directions_walk' },
           ]"
           @update:model-value="setLookMode">
-          <q-tooltip anchor="top middle" self="bottom middle">Look mode</q-tooltip>
+          <q-tooltip anchor="top middle" self="bottom middle">Look mode · Walk = WASD/arrow keys to move</q-tooltip>
         </q-btn-toggle>
         <q-separator vertical color="blue-grey-8" />
         <q-btn flat dense round icon="schedule" :color="showChronometer ? 'cyan-4' : 'blue-grey-5'"
@@ -412,6 +384,10 @@
         <q-btn flat dense round icon="mdi-pyramid" color="cyan-5" size="sm"
           @click="showTransitDialog = true">
           <q-tooltip>Pyramid transit</q-tooltip>
+        </q-btn>
+        <q-btn flat dense round icon="mdi-home-circle-outline" color="cyan-6" size="sm"
+          @click="enterDome">
+          <q-tooltip>Enter dome interior</q-tooltip>
         </q-btn>
         <q-btn flat dense round icon="arrow_back" color="blue-grey-4" size="sm"
           @click="goBackToGalaxy()">
@@ -479,12 +455,14 @@
       </div>
     </Transition>
 
-    <!-- ── Navigator inset — orbital diagram ─────────────────────── -->
+    <!-- ── Navigator inset — orbital / galaxy / cosmic tabs ─────── -->
     <NavigatorInset
       v-if="sceneReady"
       mode="orbital"
       :hostname="hostname"
       :currentPlanet="planetName"
+      @nav-galaxy="goBackToGalaxy"
+      @nav-cosmic="router.push('/')"
     />
 
     <!-- ── Loading ──────────────────────────────────────────────── -->
@@ -748,7 +726,7 @@
         </div>
         <div class="help-ctrl-row q-mb-sm">
           <q-icon name="arrow_back" color="blue-grey-4" size="13px" />
-          <span class="help-body">Return to the {{ hostname }} star system in the galaxy view</span>
+          <span class="help-body">Return to the {{ hostname }} star system in the Milky Way map</span>
         </div>
         <q-separator color="blue-grey-9" class="q-mb-sm" />
 
@@ -780,6 +758,7 @@
 
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useVizRenderer } from 'src/composables/useVizRenderer'
+import { useSpatialLocation } from 'src/composables/useSpatialLocation'
 import { useRoute, useRouter }                           from 'vue-router'
 import NavigatorInset                                    from 'src/components/NavigatorInset.vue'
 import PlanetClaimOverlay                               from 'src/components/PlanetClaimOverlay.vue'
@@ -812,6 +791,11 @@ import {
 
 const route  = useRoute()
 const router = useRouter()
+
+// Spatial URL API — ?at=<scope> / ?cam=x,y,z,tx,ty,tz,fov navigation.
+// Getters close over `camera`/`controls`/`terrainBaseY`, all assigned in initScene()
+// (terrainBaseY varies per planet — see adjustForTerrain() in spatial-scopes.ts).
+const spatial = useSpatialLocation(() => camera, () => controls, () => terrainBaseY)
 
 const hostname   = computed(() => String(route.params.hostname   ?? ''))
 const planetName = computed(() => String(route.params.planetName ?? ''))
@@ -1348,6 +1332,11 @@ let _stopTick: (() => void) | null = null
 const pageGroup = new THREE.Group()
 let clockRef:      THREE.Clock
 
+// ── Keyboard WASD navigation ──────────────────────────────────────────────────
+const keysDown  = new Set<string>()
+let keydownFn:  ((e: KeyboardEvent) => void) | null = null
+let keyupFn:    ((e: KeyboardEvent) => void) | null = null
+
 let hostStarMesh:  THREE.Mesh | null = null
 let hostStarGlow:  THREE.Mesh | null = null
 let hostStarLight: THREE.DirectionalLight | null = null
@@ -1396,26 +1385,41 @@ function initScene() {
   camera.near = 0.1
   camera.far  = 2000
   camera.aspect = window.innerWidth / (window.innerHeight - 44)
-  camera.position.set(0, 4, 130)
+  camera.position.set(0, 4, 85)
   camera.updateProjectionMatrix()
 
   controls.target.set(0, 2, 0)
+  controls.enableRotate       = true
   controls.enablePan          = true
   controls.screenSpacePanning = false
   controls.panSpeed           = 0.6
   controls.enableZoom         = true
-  controls.minDistance        = 8
+  controls.zoomToCursor       = true   // pinch/scroll zooms toward pointer
+  controls.zoomSpeed          = 0.9
+  controls.minDistance        = 2
   controls.maxDistance        = 500
   controls.minPolarAngle      = 0.10
   controls.maxPolarAngle      = Math.PI * 0.54
   controls.rotateSpeed        = 0.4
-  controls.zoomToCursor       = false
+  controls.mouseButtons       = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN }
+  controls.touches            = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN }
   controls.update()
 
   scene.add(pageGroup)
   clockRef  = new THREE.Clock()
   raycaster = new THREE.Raycaster()
   raycaster.params.Points = { threshold: 2 }
+
+  // Keyboard movement — register once per scene init; cleaned up in onUnmounted
+  if (!keydownFn) {
+    keydownFn = (e: KeyboardEvent) => {
+      keysDown.add(e.code)
+      if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)) e.preventDefault()
+    }
+    keyupFn = (e: KeyboardEvent) => keysDown.delete(e.code)
+    window.addEventListener('keydown', keydownFn)
+    window.addEventListener('keyup',   keyupFn!)
+  }
 
   addAmbientLight()
   addStarField()
@@ -1602,7 +1606,9 @@ function addParentPlanet() {
   ring.rotation.x = Math.PI * 0.18
   scene.add(ring)
 
-  scene.add(Object.assign(new THREE.PointLight(pCol.getHex(), 0.4, 600), { position: mesh.position.clone() }))
+  const parentLight = new THREE.PointLight(pCol.getHex(), 0.4, 600)
+  parentLight.position.copy(mesh.position)
+  scene.add(parentLight)
 
   hitTargets.push({ mesh, hit: {
     name:  parentName.value,
@@ -2304,6 +2310,23 @@ function surfaceTick(t: number) {
       waterMesh.geometry.computeVertexNormals()
     }
 
+    // WASD / arrow-key walk — pan camera+target together so view direction stays fixed
+    if (keysDown.size > 0) {
+      const WALK_SPEED = 1.4
+      const fwd = new THREE.Vector3()
+      camera.getWorldDirection(fwd); fwd.y = 0; fwd.normalize()
+      const right = new THREE.Vector3().crossVectors(fwd, new THREE.Vector3(0, 1, 0))
+      const delta = new THREE.Vector3()
+      if (keysDown.has('KeyW') || keysDown.has('ArrowUp'))    delta.addScaledVector(fwd,   WALK_SPEED)
+      if (keysDown.has('KeyS') || keysDown.has('ArrowDown'))  delta.addScaledVector(fwd,  -WALK_SPEED)
+      if (keysDown.has('KeyA') || keysDown.has('ArrowLeft'))  delta.addScaledVector(right, -WALK_SPEED)
+      if (keysDown.has('KeyD') || keysDown.has('ArrowRight')) delta.addScaledVector(right,  WALK_SPEED)
+      if (delta.lengthSq() > 0) {
+        camera.position.add(delta)
+        controls.target.add(delta)
+      }
+    }
+
     controls.update()
 
     // Hard floor: camera never drops below terrain base — prevents seeing settlement from underneath
@@ -2332,10 +2355,17 @@ function setLookMode(mode: string) {
     controls.target.set(0, eyeY + 100, 0)
     controls.minPolarAngle = 0
     controls.maxPolarAngle = Math.PI * 0.45
+  } else if (mode === 'walk') {
+    // Walk mode — camera inside dome at eye level; WASD/arrow keys move forward/back/strafe
+    const eyeY = Math.max(terrainBaseY + 3.5, 3.5)
+    camera.position.set(0, eyeY, 50)
+    controls.target.set(0, eyeY, -10)
+    controls.minPolarAngle = 0.05
+    controls.maxPolarAngle = Math.PI * 0.68
   } else {
-    // Surface walk mode — camera outside dome, looking at settlement
+    // Orbit mode — camera outside dome, full turntable rotation
     const eyeY = Math.max(terrainBaseY + 4, 4)
-    camera.position.set(0, eyeY, 130)
+    camera.position.set(0, eyeY, 85)
     controls.target.set(0, eyeY * 0.5, 0)
     controls.minPolarAngle = 0.10
     controls.maxPolarAngle = Math.PI * 0.54
@@ -2360,6 +2390,54 @@ function onCanvasClick() {
   if (hoveredObject.value?.isPyramid) {
     showTransitDialog.value = true
   }
+}
+
+// Double-click: fly to the named scope for the hovered object, or zoom toward hit point.
+function onCanvasDblClick(e: MouseEvent) {
+  if (!camera || !controls) return
+
+  const w = window.innerWidth, h = window.innerHeight - 44
+  const ndcX =  (e.clientX / w) * 2 - 1
+  const ndcY = -((e.clientY - 44) / h) * 2 + 1
+  raycaster.setFromCamera({ x: ndcX, y: ndcY }, camera)
+
+  const hits = raycaster.intersectObjects(hitTargets.map(t => t.mesh), false)
+
+  if (hits.length) {
+    const hitObj = hitTargets.find(t => t.mesh === hits[0]!.object)?.hit
+    if (hitObj) {
+      if (hitObj.isPyramid) { spatial.flyTo('settlement:pyramid:chamber'); return }
+      if (hitObj.type.includes('Sustainable Land Assistant')) {
+        spatial.flyTo(`settlement:orb:${toOrbSlug(hitObj.name)}`)
+        return
+      }
+      // Library, water, star, planet hits — zoom toward the world hit point
+    }
+    // Zoom toward the specific hit point in the scene
+    const pt  = hits[0]!.point
+    const cam = camera!
+    const ctrl = controls!
+    const dir  = cam.position.clone().sub(pt).normalize()
+    const dist = cam.position.distanceTo(pt)
+    const newPos = pt.clone().add(dir.multiplyScalar(Math.max(dist * 0.35, ctrl.minDistance + 1)))
+    gsap.to(cam.position,  { x: newPos.x, y: newPos.y, z: newPos.z, duration: 1.2, ease: 'power2.out',
+      onUpdate: () => ctrl.update() })
+    gsap.to(ctrl.target,   { x: pt.x, y: pt.y, z: pt.z, duration: 1.2, ease: 'power2.out' })
+    return
+  }
+
+  // No hit mesh — zoom camera forward by 35% toward cursor direction
+  const cam = camera!
+  const forward = new THREE.Vector3(ndcX * 0.5, ndcY * 0.5, 0.5)
+    .unproject(cam).sub(cam.position).normalize()
+  const step = Math.max(cam.position.distanceTo(controls!.target) * 0.35, 5)
+  const newPos = cam.position.clone().add(forward.multiplyScalar(step))
+  gsap.to(cam.position, { x: newPos.x, y: newPos.y, z: newPos.z, duration: 1.1, ease: 'power2.out',
+    onUpdate: () => controls?.update() })
+}
+
+function toOrbSlug(name: string): string {
+  return name.toLowerCase().replace(/^_+/, '').replace(/[^a-z0-9]+/g, '-').replace(/-$/, '')
 }
 
 // ── Resize ────────────────────────────────────────────────────────────────────
@@ -2493,6 +2571,15 @@ function goBackToGalaxy() {
   })
 }
 
+/** Navigate into the dome interior page. */
+function enterDome() {
+  void router.push({
+    name: 'dome-interior',
+    params: { hostname: hostname.value, planetName: planetName.value },
+    query: { eqt: String(planet.value?.pl_eqt ?? 285) },
+  })
+}
+
 /** Context zoom from surface: portal to galaxy view with this system highlighted. */
 function onContextZoom() {
   goBackToGalaxy()
@@ -2573,10 +2660,14 @@ onMounted(async () => {
   })
 
   initScene()
+  spatial.restoreFromUrl()   // apply ?at=<scope> / ?cam=... if present, else keep initScene's default view
   _stopTick = viz.addTick(surfaceTick)
 })
 
 onUnmounted(() => {
+  if (keydownFn) { window.removeEventListener('keydown', keydownFn); keydownFn = null }
+  if (keyupFn)   { window.removeEventListener('keyup',   keyupFn);   keyupFn   = null }
+  keysDown.clear()
   if (clockInterval !== null) clearInterval(clockInterval)
   _stopTick?.(); _stopTick = null
 
@@ -2595,176 +2686,6 @@ onUnmounted(() => {
   settlementGroup = null
   stoneCircleGlow = null
 })
-
-// ── Location mini-map panel ────────────────────────────────────────────────
-const locPanelOpen = ref(true)
-const locTab       = ref<'galaxy' | 'cosmic'>('galaxy')
-const galCanvas    = ref<HTMLCanvasElement | null>(null)
-const cosmCanvas   = ref<HTMLCanvasElement | null>(null)
-
-function setLocTab(tab: 'galaxy' | 'cosmic') {
-  locTab.value = tab
-  void nextTick(() => { if (tab === 'galaxy') drawGalaxyMiniMap(); else drawCosmicMiniMap() })
-}
-
-function raDecToGalactic(ra: number, dec: number) {
-  const D2R = Math.PI / 180
-  const aNGP = 192.85948 * D2R, dNGP = 27.12825 * D2R, lNCP = 122.93192 * D2R
-  const aR = ra * D2R, dR = dec * D2R
-  const sinB = Math.sin(dR)*Math.sin(dNGP) + Math.cos(dR)*Math.cos(dNGP)*Math.cos(aR - aNGP)
-  const b    = Math.asin(Math.max(-1, Math.min(1, sinB)))
-  const y    = Math.cos(dR)*Math.sin(aR - aNGP)
-  const x    = Math.sin(dR)*Math.cos(dNGP) - Math.cos(dR)*Math.sin(dNGP)*Math.cos(aR - aNGP)
-  const l    = ((lNCP - Math.atan2(y, x)) * 180/Math.PI % 360 + 360) % 360
-  return { l, b: b * 180/Math.PI }
-}
-
-function galToEquatorial(l: number, b: number): { ra: number; dec: number } {
-  const D2R = Math.PI / 180
-  const aNGP = 192.85948 * D2R, dNGP = 27.12825 * D2R, lNCP = 122.93192 * D2R
-  const lR = l * D2R, bR = b * D2R
-  const sinDec = Math.sin(bR)*Math.sin(dNGP) + Math.cos(bR)*Math.cos(dNGP)*Math.cos(lNCP - lR)
-  const dec    = Math.asin(Math.max(-1, Math.min(1, sinDec))) * 180/Math.PI
-  const y2     = Math.cos(bR)*Math.sin(lNCP - lR)
-  const x2     = Math.sin(bR)*Math.cos(dNGP) - Math.cos(bR)*Math.sin(dNGP)*Math.cos(lNCP - lR)
-  const ra     = ((aNGP + Math.atan2(y2, x2)) * 180/Math.PI % 360 + 360) % 360
-  return { ra, dec }
-}
-
-function drawGalaxyMiniMap() {
-  const cv = galCanvas.value
-  if (!cv || !system.value) return
-  const ctx = cv.getContext('2d')!
-  const W = cv.width, H = cv.height
-  ctx.clearRect(0, 0, W, H)
-  ctx.fillStyle = '#060b14'; ctx.fillRect(0, 0, W, H)
-
-  const { l, b } = raDecToGalactic(system.value.ra, system.value.dec)
-  const distPc   = system.value.sy_dist ?? 100
-  const D2R      = Math.PI / 180
-  const cosB     = Math.cos(b * D2R)
-  const sysX     = distPc * cosB * Math.cos(l * D2R)
-  const sysY     = distPc * cosB * Math.sin(l * D2R)
-  const scale    = Math.max(distPc * 1.6, 400)
-  const [cx, cy] = [W / 2, H / 2]
-  const px       = (v: number) => cx + (v / scale) * (cx - 14)
-  const py       = (v: number) => cy - (v / scale) * (cy - 8)
-
-  // Faint disk background
-  const grd = ctx.createRadialGradient(cx, cy, 4, cx, cy, cx - 8)
-  grd.addColorStop(0,   'rgba(160,140,255,0.13)')
-  grd.addColorStop(0.5, 'rgba(60,80,180,0.07)')
-  grd.addColorStop(1,   'rgba(8,14,40,0.0)')
-  ctx.beginPath(); ctx.ellipse(cx, cy, cx-8, cy-6, 0, 0, Math.PI*2)
-  ctx.fillStyle = grd; ctx.fill()
-
-  // GC dot or direction arrow
-  const GC_DIST = 8178
-  const gcX = px(GC_DIST), gcY = py(0)
-  if (gcX >= 2 && gcX <= W-2 && gcY >= 2 && gcY <= H-2) {
-    ctx.beginPath(); ctx.arc(gcX, gcY, 3, 0, Math.PI*2)
-    ctx.fillStyle = 'rgba(255,148,48,0.65)'; ctx.fill()
-    ctx.fillStyle = 'rgba(255,128,38,0.52)'; ctx.font = '6px monospace'
-    ctx.fillText('GC', gcX+4, gcY+3)
-  } else {
-    const ang = Math.atan2(gcY - cy, gcX - cx)
-    const arX = cx + Math.cos(ang) * (cx - 16), arY = cy + Math.sin(ang) * (cy - 10)
-    ctx.beginPath(); ctx.arc(arX, arY, 2, 0, Math.PI*2)
-    ctx.fillStyle = 'rgba(255,128,38,0.42)'; ctx.fill()
-    ctx.fillStyle = 'rgba(255,118,28,0.35)'; ctx.font = '6px monospace'
-    ctx.fillText('GC', arX + (arX > cx ? -14 : 3), arY - 3)
-  }
-
-  // Sol
-  ctx.beginPath(); ctx.arc(cx, cy, 3, 0, Math.PI*2)
-  ctx.fillStyle = '#ffe87a'; ctx.fill()
-  ctx.fillStyle = 'rgba(255,230,120,0.48)'; ctx.font = '6px monospace'
-  ctx.fillText('Sol', cx+4, cy-2)
-
-  // Dashed line Sol → system
-  ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(px(sysX), py(sysY))
-  ctx.strokeStyle = 'rgba(0,170,210,0.20)'; ctx.lineWidth = 0.8
-  ctx.setLineDash([3,3]); ctx.stroke(); ctx.setLineDash([])
-
-  // System dot
-  const sdx = px(sysX), sdy = py(sysY)
-  ctx.beginPath(); ctx.arc(sdx, sdy, 5, 0, Math.PI*2)
-  ctx.strokeStyle = 'rgba(0,210,255,0.35)'; ctx.lineWidth = 1; ctx.stroke()
-  ctx.beginPath(); ctx.arc(sdx, sdy, 2.5, 0, Math.PI*2)
-  ctx.fillStyle = '#00ddff'; ctx.fill()
-
-  // Labels
-  ctx.fillStyle = 'rgba(0,188,218,0.62)'; ctx.font = '6px monospace'
-  ctx.fillText(distPc < 1000 ? `${distPc.toFixed(0)} pc` : `${(distPc/1000).toFixed(1)} kpc`, 3, H-3)
-  ctx.fillStyle = 'rgba(110,145,190,0.42)'; ctx.font = '6px monospace'
-  ctx.fillText(`l=${l.toFixed(0)}° b=${b >= 0?'+':''}${b.toFixed(0)}°`, W-72, H-3)
-}
-
-function drawCosmicMiniMap() {
-  const cv = cosmCanvas.value
-  if (!cv || !system.value) return
-  const ctx = cv.getContext('2d')!
-  const W = cv.width, H = cv.height
-  ctx.clearRect(0, 0, W, H)
-  ctx.fillStyle = '#060b14'; ctx.fillRect(0, 0, W, H)
-
-  // Grid
-  ctx.strokeStyle = 'rgba(28,52,88,0.52)'; ctx.lineWidth = 0.5
-  for (let r = 0; r <= 360; r += 60) {
-    const x = (r/360)*W; ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke()
-  }
-  for (let d = -60; d <= 60; d += 30) {
-    const y = ((90-d)/180)*H; ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke()
-  }
-  // Equator
-  ctx.strokeStyle = 'rgba(45,85,145,0.48)'; ctx.lineWidth = 0.8
-  const eq = (90/180)*H; ctx.beginPath(); ctx.moveTo(0,eq); ctx.lineTo(W,eq); ctx.stroke()
-
-  // Galactic plane arc (b=0 traced in equatorial)
-  ctx.strokeStyle = 'rgba(195,152,55,0.26)'; ctx.lineWidth = 1
-  ctx.beginPath()
-  let prevRaGp = -999
-  for (let li = 0; li <= 360; li += 2) {
-    const { ra: gRa, dec: gDec } = galToEquatorial(li, 0)
-    const gx = (gRa/360)*W, gy = ((90-gDec)/180)*H
-    if (Math.abs(gRa - prevRaGp) > 180) { ctx.stroke(); ctx.beginPath(); ctx.moveTo(gx, gy) }
-    else if (li === 0) ctx.moveTo(gx, gy)
-    else ctx.lineTo(gx, gy)
-    prevRaGp = gRa
-  }
-  ctx.stroke()
-
-  // System dot
-  const ra = system.value.ra, dec = system.value.dec
-  const sx = (ra/360)*W, sy = ((90-dec)/180)*H
-  ctx.beginPath(); ctx.arc(sx, sy, 5, 0, Math.PI*2)
-  ctx.strokeStyle = 'rgba(0,210,255,0.35)'; ctx.lineWidth = 1; ctx.stroke()
-  ctx.beginPath(); ctx.arc(sx, sy, 2.5, 0, Math.PI*2)
-  ctx.fillStyle = '#00ddff'; ctx.fill()
-
-  // Axis labels
-  ctx.fillStyle = 'rgba(55,95,145,0.58)'; ctx.font = '6px monospace'
-  ctx.fillText('0h', 2, 8); ctx.fillText('12h', W/2-8, 8)
-  ctx.fillStyle = 'rgba(0,182,212,0.62)'; ctx.font = '6px monospace'
-  ctx.fillText(`${(ra/15).toFixed(1)}h  ${dec>=0?'+':''}${dec.toFixed(1)}°`, 3, H-3)
-}
-
-function goToCosmic() {
-  void router.push('/cosmic')
-}
-
-watch(
-  [system, locPanelOpen, locTab, galCanvas, cosmCanvas],
-  () => {
-    if (!locPanelOpen.value || !system.value) return
-    void nextTick(() => {
-      if (locTab.value === 'galaxy') drawGalaxyMiniMap()
-      else drawCosmicMiniMap()
-    })
-  },
-  { immediate: false },
-)
-
 watch([hostname, planetName], async () => {
   cancelAnimationFrame(animId)
   if (renderer) {
@@ -2779,6 +2700,7 @@ watch([hostname, planetName], async () => {
   }
   await galaxyStore.loadData()
   initScene()
+  spatial.restoreFromUrl()
 })
 </script>
 
@@ -3537,99 +3459,4 @@ watch([hostname, planetName], async () => {
 .xray-fade-enter-from,
 .xray-fade-leave-to     { opacity: 0; }
 
-/* ── Location panel ─────────────────────────────────────────────── */
-
-.loc-panel {
-  position: absolute;
-  top: 58px;
-  right: 12px;
-  width: 184px;
-  background: rgba(1, 5, 18, 0.90);
-  border: 1px solid rgba(0, 140, 190, 0.20);
-  border-radius: 6px;
-  backdrop-filter: blur(8px);
-  font-family: 'Courier New', monospace;
-  z-index: 5;
-  overflow: hidden;
-}
-
-.loc-header {
-  display: flex;
-  align-items: center;
-  padding: 5px 8px;
-  cursor: pointer;
-  user-select: none;
-  border-bottom: 1px solid rgba(0, 120, 170, 0.10);
-  transition: background 0.15s;
-}
-.loc-header:hover { background: rgba(0, 140, 200, 0.07); }
-
-.loc-title {
-  font-size: 9px;
-  letter-spacing: 0.12em;
-  color: rgba(0, 190, 230, 0.75);
-}
-
-.loc-toggle {
-  font-size: 8px;
-  color: rgba(80, 130, 170, 0.6);
-}
-
-.loc-body { overflow: hidden; }
-
-.loc-tabs {
-  display: flex;
-  border-bottom: 1px solid rgba(0, 100, 150, 0.15);
-}
-
-.loc-tab {
-  flex: 1;
-  padding: 4px 0;
-  background: none;
-  border: none;
-  font-family: 'Courier New', monospace;
-  font-size: 8px;
-  letter-spacing: 0.10em;
-  color: rgba(80, 130, 170, 0.65);
-  cursor: pointer;
-  transition: color 0.15s, background 0.15s;
-}
-.loc-tab:hover  { color: rgba(0, 200, 240, 0.85); background: rgba(0,140,200,0.05); }
-.loc-tab--active {
-  color: rgba(0, 210, 255, 0.95);
-  background: rgba(0, 120, 180, 0.12);
-  border-bottom: 1px solid rgba(0, 200, 250, 0.35);
-}
-
-.loc-canvas {
-  display: block;
-  width: 100%;
-  height: auto;
-}
-
-.loc-nav {
-  padding: 5px 8px;
-  border-top: 1px solid rgba(0, 100, 150, 0.12);
-}
-
-.loc-nav-btn {
-  display: flex;
-  align-items: center;
-  width: 100%;
-  padding: 3px 6px;
-  background: rgba(0, 120, 180, 0.10);
-  border: 1px solid rgba(0, 160, 210, 0.20);
-  border-radius: 3px;
-  font-family: 'Courier New', monospace;
-  font-size: 8px;
-  letter-spacing: 0.08em;
-  color: rgba(0, 190, 230, 0.80);
-  cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
-}
-.loc-nav-btn:hover {
-  background: rgba(0, 140, 200, 0.18);
-  border-color: rgba(0, 200, 250, 0.40);
-  color: rgba(0, 220, 255, 1);
-}
 </style>
