@@ -1,62 +1,52 @@
-# OS files
+# ── OS / Editor ───────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
-
-# IDE/Editor
+*.swp
+*.swo
 .idea/
 .vscode/
-*.swp
 
-# Logs and databases
-*.log
-*.sqlite
-
-# Dependency directories (if not using a package manager)
+# ── Node ──────────────────────────────────────────────────────────────────────
 node_modules/
 
-# Contract deployment artifacts (contain addresses, not secrets)
-contracts/deployed-*.json
+# ── Python environments (never commit .venv or virtualenvs) ───────────────────
+.venv/
+venv/
+env/
+*/.venv/
+*/venv/
+*/env/
+__pycache__/
+*.pyc
+*.pyo
+
+# ── Build outputs ─────────────────────────────────────────────────────────────
+dist/
+build/
+.quasar/
+
+# ── Compiled / generated binaries ─────────────────────────────────────────────
+*.exe
+*.dll
+*.so
+*.dylib
+
+# ── Secrets and environment ───────────────────────────────────────────────────
+.env
+.env.local
+.env.*
+
+# ── Large export/scrape files (keep scripts, not raw data dumps) ──────────────
+*.csv
+ps_export.*
+name-of-archive.*
+
+# ── Solidity / Hardhat artifacts ──────────────────────────────────────────────
 contracts/artifacts/
 contracts/cache/
 contracts/typechain-types/
-__pycache__/
+contracts/deployed-*.json
 
-# Build files
-dist/
-build/
-*.exe
-*.dll
-
-# Local environment files
-.env
-.env.local
-
-
-
-# Build outputs
-dist/
-main_oct2.js
-*.html  # If these are generated (e.g., from a build process)
-*.js    # If minified/generated JS
-
-# Logs, exports, and temporary files
-*.csv
-*.json  # If auto-generated (e.g., `package-lock.json` is already ignored)
-*.webp
-*.gif
-
-# Python artifacts
-*.pyc
-__pycache__/
-
-# IDE/Editor
-.vscode/
-.idea/
-
-# OS files
-.DS_Store
-Thumbs.db
-
-# Environment files
-.env*
-
+# ── Logs ──────────────────────────────────────────────────────────────────────
+*.log
+*.sqlite
